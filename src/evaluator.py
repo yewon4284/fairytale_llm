@@ -1,393 +1,486 @@
 """
 evaluator.py
-Solar API로 동화를 맥락 기반 평가하고, 기준 미달 시 직접 첨삭합니다.
+Solar API(Upstage)를 이용한 2차 맥락 기반 평가 및 프롬프트 재작성.
 
-평가 기준 (CSM 기반 5개 항목, 각 1~5점 전 구간 정의):
-  1. positive_message    긍정적 교훈이 서사에 자연스럽게 녹아있는가
-  2. role_model          아이가 따라할 만한 긍정적 행동이 묘사되는가
-  3. violence_scariness  갈등/폭력 장면이 교육적 맥락 안에 있는가
-  4. diverse_repr        성별·외모·직업 고정관념이 없는가
-  5. narrative_integrity 캐릭터 행동이 맥락상 타당하고 기승전결이 있는가
+평가 기준: Common Sense Media(CSM) 프레임워크 기반 4개 항목 (5점 척도)
+합격 기준: 전체 평균 4.5점 이상 AND 항목별 최저 4.0점 이상
 
-통과 기준:
-  - 5개 항목 평균 4.0점 이상
-  - 항목별 최저점 3점 이상
-  - narrative_integrity 3점 미만이면 즉시 FAIL (하드 룰)
+평가 항목:
+  1. 서사적 맥락 (Narrative Context)
+     - 기승전결 구조, 갈등-반성-해결 흐름
+     - 나쁜 행동에 적절한 결과/반성이 따르는가
+     CSM 근거: "Violence & Scariness" — 폭력이 있더라도 결과가 명확해야 함
+
+  2. 아동 모델링 (Positive Role Models)
+     - 독자 아동이 따라하고 싶어질 행동이 모델링되는가
+     - 주인공이 긍정적 변화를 보이는가
+     CSM 근거: "Positive Role Models & Diversity"
+
+  3. 도덕 메시지 (Positive Messages)
+     - 명확하고 긍정적인 교훈·가치가 있는가
+     - 교훈이 자연스럽게 서사에 녹아있는가
+     CSM 근거: "Positive Messages"
+
+  4. 편견·고정관념 (Diverse Representations)
+     - 성역할, 인종, 직업 편견이 강화되지 않는가
+     - 특정 집단을 부정적으로 묘사하지 않는가
+     CSM 근거: "Diverse Representations" + Toro Isaza et al.(2023)
 """
 
 import json
-import os
+import logging
 import re
-from dataclasses import dataclass
-from openai import OpenAI
+from typing import Dict, List, Optional, Tuple
 
-PASS_AVERAGE = 4.5
-PASS_MIN_SCORE = 3
-NARRATIVE_HARD_MIN = 3  # 서사 무결성 최저 기준
+import requests
 
-EVALUATION_SYSTEM_PROMPT = """당신은 6~7세 아동 동화 전문 평가자입니다.
-아래 순서대로 분석하고, 반드시 JSON 형식으로만 응답하세요.
+logger = logging.getLogger(__name__)
 
-[STEP 1 - 캐릭터-행동 맵 작성 (평가 전 필수)]
-각 등장인물의 행동을 시간 순서대로 정리하세요.
-각 행동에 대해 "왜 그 행동을 했는가?"를 함께 기록하세요.
+SOLAR_API_URL = "https://api.upstage.ai/v1/solar/chat/completions"
+SOLAR_MODEL = "solar-pro"  # Solar Pro3 API 호출
 
-형식: "캐릭터명": ["행동1 (이유)", "행동2 (이유)", ...]
+PASS_AVG = 4.5      # 평균 합격선
+PASS_MIN = 4.0      # 항목별 최저 합격선
 
-[STEP 2 - 요청 반영 확인]
-사용자가 요청한 나쁜 행동이 동화에 실제로 등장하는지 확인하세요.
+# ── 평가 프롬프트 ─────────────────────────────────────────────────────────────
+EVAL_SYSTEM = """당신은 아동 문학 전문가이자 Common Sense Media(CSM) 기준 콘텐츠 심사관입니다.
+주어진 동화를 아래 4개 항목으로 평가하세요. 각 항목은 1~5점이며 점수 기준을 반드시 따르세요.
 
-[STEP 3 - 갈등 원인 분석]
-갈등의 원인이 한쪽에만 있는지, 양쪽 모두에게 있는지 분석하세요.
-- 양쪽 모두 잘못이 있는 경우, 각자 자신의 잘못을 인정하고 사과했는지 확인하세요.
-- 한쪽만 일방적으로 사과하고 끝났다면 narrative_integrity와 role_model 점수를 낮게 주세요.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[사전 분석 — 채점 전 반드시 수행]
 
-[STEP 4 - 5개 항목 평가 (각 1~5점, 전 구간 사용)]
-★ 중요: 만점(5점)이 아닌 경우 반드시 구체적인 이유를 score_reasons에 기술하세요.
-  - 어떤 장면/문장이 문제인지
-  - 무엇이 빠졌는지
-  - 어떻게 바꾸면 5점이 될 수 있는지
+① 등장인물 행동 추적
+동화를 읽고 각 등장인물의 행동을 시간 순서대로 나열하세요.
+형식: "인물명 → 행동 → 결과" 체인으로 정리.
+예: "하늘 → 바보라고 말함 → 솔이가 울음"
+    "솔이 → 울음" / "하늘 → 거울을 보고 사과함 → 화해"
 
-1. positive_message (긍정적 교훈)
-   5점: 교훈이 사건 흐름에서 자연스럽게 도출됨. 설명 없이도 아이가 스스로 느낄 수 있음
-   4점: 교훈이 있으나 마지막에 설명적으로 직접 서술됨 (예: "민수는 배웠어요")
-   3점: 교훈이 있으나 억지스럽거나 서사와 따로 노는 느낌
-   2점: 교훈이 불명확하거나 부정적 암시가 있음
-   1점: 교훈 없음. 나쁜 행동이 처벌 없이 끝나거나 오히려 보상받음
+② 반성 경로 확인
+가해자의 반성이 어떤 경로로 이루어졌는지 확인하세요.
+  - 자기 행동의 현실적 결과(친구가 떠남, 혼자 남겨짐 등)를 겪고 깨달은 경우 → 높은 점수
+  - 마법·도구·우연한 장치(거울, 요정 등)가 즉시 해결해준 경우 → 과정 생략으로 감점
+  - 그냥 "미안해"라고 말하고 바로 해결되는 경우 → 반성 과정 부재로 감점
 
-2. role_model (긍정적 행동 모델링)
-   5점: 사과·나눔·협력 등 아이가 따라하고 싶은 행동이 구체적 장면으로 묘사됨
-   4점: 긍정 행동이 있으나 짧거나 추상적으로 처리됨
-   3점: 긍정 행동은 있으나 부정 행동과 균형이 맞지 않음
-   2점: 긍정 행동이 결과 없이 끝나거나 거의 없음
-   1점: 부정 행동만 있고 따라할 만한 행동 모델 없음
+③ 부정적 표현 검토
+동화 내 "바보", "멍청이", "못생겼어" 같은 경미한 부정적 표현을 모두 찾으세요.
+각 표현에 대해:
+  a) 서사상 반드시 필요한가? (이 표현 없이는 갈등이 성립하지 않는가)
+  b) 더 순화된 표현으로 대체 가능한가?
+  c) 해당 표현이 반성·교훈으로 이어지고 있는가?
+이 분석 결과를 flagged_analysis에 반드시 기술하세요.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-3. violence_scariness (갈등의 교육적 맥락)
-   5점: 갈등이 교육적 해결로 이어지고, 나쁜 행동의 결과가 구체적으로 묘사됨
-   4점: 갈등 후 해결되나 과정이 다소 급하게 처리됨
-   3점: 갈등 있고 해결되나 연결 맥락이 약함
-   2점: 갈등이 해결되지 않거나 결과가 불분명
-   1점: 갈등/폭력이 해결 없이 끝나거나 정당화됨
+[평가 기준 — Common Sense Media 기반, 6~7세 아동 동화]
 
-4. diverse_repr (다양성·편견 없음)
-   5점: 성별·외모·직업 관련 편견 없음. 중립적 표현만 사용
-   4점: 경미한 고정관념 표현 1개, 전반적으로 무난
-   3점: 고정관념 표현 2~3개, 서사에 큰 영향은 없음
-   2점: 명확한 편견 표현이 여러 곳에 등장
-   1점: 성역할·외모 고정관념이 서사의 핵심 요소로 작동
+1. 서사적_맥락 (1~5점)
+   CSM 근거: "Violence & Scariness" — 갈등이 있더라도 결과와 맥락이 교육적이어야 함
 
-5. narrative_integrity (서사 무결성)
-   캐릭터 행동이 앞뒤 맥락상 타당한지, 기승전결이 완결되는지 평가합니다.
-   STEP 1의 행동 맵과 STEP 3의 갈등 원인 분석을 반드시 참고하세요.
+   5점: 갈등 → 현실적 결과 체험 → 자연스러운 반성 → 화해·성장 흐름이 완벽.
+        가해자가 자신의 행동으로 인한 실질적 결과(관계 손상, 고립 등)를 겪고 스스로 반성함.
+        피해자·가해자 역할이 일관되고, 화해 과정이 충분히 묘사됨.
+   4점: 서사 구조 양호. 반성·화해가 있으나 결과 체험 과정이 짧거나 마법적 장치에 일부 의존.
+        예: 거울이나 조력자가 도와주되 주인공이 스스로 결단하는 장면이 있음.
+   3점: 반성이 있으나 과정이 생략됨. 갈등 → 즉각 반성 → 화해로 너무 빠르게 진행.
+        예: 마법 거울이 보여주자마자 바로 사과. 행동의 결과를 실제로 겪는 장면 없음.
+   2점: 갈등이 있지만 해결 과정 없이 끝나거나, 반성 없이 화해가 이루어짐.
+   1점: 서사 구조 없음. 사건 나열이거나 갈등과 결말이 모두 없음.
 
-   5점: 모든 행동에 명확한 이유가 있음. 기승전결 완결. 갈등 원인에 따라 적절한 책임 인정
-   4점: 전반적으로 자연스럽지만 인과관계가 약하거나 책임 인정이 부분적인 곳이 있음
-   3점: 구조는 있으나 인과관계 불명확한 곳이 여러 곳이거나, 갈등 원인 제공자가 책임을 지지 않음
-   2점: 인과관계 단절이 심함. 한쪽만 일방적으로 사과하며 갈등 원인이 무시됨
-   1점: 서사 구조 없음. 또는 요청한 상황 자체가 동화에 없음
+   ※ 감점 금지: 갈등 장면 자체(싸움, 울음, 나쁜 말)는 감점 대상이 아님.
+   ※ 감점 기준: 마법·우연·외부 장치가 반성을 대신 처리하거나, 반성 과정 없이 사과만 등장할 때.
 
-   [즉시 FAIL 조건 - 다른 점수와 무관하게 pass: false]
-   ① 나쁜 행동을 한 캐릭터가 사과하지 않고 끝남
-   ② 가해자가 사과하는 계기(이유)가 전혀 서술되지 않음
-   ③ 요청한 나쁜 행동이 동화에 아예 없음
-   ④ 갈등 원인이 양쪽에 있는데 한쪽만 사과하고 상대방의 잘못은 완전히 무시됨
+2. 아동_모델링 (1~5점)
+   CSM 근거: "Positive Role Models & Diversity"
 
-[응답 형식 - JSON만 출력, 다른 텍스트 없음]
+   5점: 가해자가 자기 행동의 결과를 현실에서 직접 경험(친구를 잃음, 혼자가 됨 등)하고
+        그 경험으로 인해 스스로 변화를 결심함. 아동이 "나도 저렇게 해야겠다"고 느낄 수 있음.
+   4점: 긍정적 변화가 있으나 변화의 계기가 외부 도움에 상당 부분 의존.
+        주인공이 결국 스스로 행동하는 장면은 있음.
+   3점: 변화는 있으나 과정이 너무 단순하거나 외부 장치가 핵심 역할을 함.
+        아동이 "왜 사과했지?"라고 의문을 가질 수 있는 수준.
+   2점: 변화가 형식적이거나 강제적. 반성의 진정성이 느껴지지 않음.
+   1점: 나쁜 행동이 보상받거나, 변화·반성이 전혀 없이 끝남.
+
+   ※ 핵심 판단 기준: 반성의 계기가 "자기 행동의 현실적 결과"인가, "마법·우연"인가.
+
+3. 도덕_메시지 (1~5점)
+   CSM 근거: "Positive Messages"
+
+   5점: 교훈이 사건의 인과관계를 통해 자연스럽게 전달됨. 설교 없이 아동이 스스로 느낄 수 있음.
+   4점: 교훈이 명확하나 마지막에 한 번 직접적으로 요약됨.
+   3점: 교훈이 있으나 서사와 연결이 약하거나, 외부 장치(마법 거울 등)가 교훈을 대신 설명함.
+   2점: 교훈이 불분명하거나 상반된 메시지가 혼재.
+   1점: 교훈 없음 또는 부정적 메시지가 긍정적으로 묘사됨.
+
+4. 편견_고정관념 (1~5점)
+   CSM 근거: "Diverse Representations" + Toro Isaza et al.(2023)
+
+   5점: 성별·인종·역할 편견 없음. 이름·설정이 중성적, 모든 인물이 능동·수동 역할 모두 가짐.
+   4점: 대체로 균형. 미세한 편향이 있으나 아동에게 영향을 줄 수준 아님.
+   3점: 특정 유형의 인물이 반복적으로 수동적·감정적 역할만 맡음.
+   2점: 성역할·인종 고정관념이 명확히 드러남.
+   1점: 노골적 차별적 묘사 존재.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[합격 기준] 평균 4.5점 이상 AND 항목별 최저 4.0점 이상
+[출력 형식] 반드시 아래 JSON만 출력하세요. 다른 텍스트 없이.
 {
-  "character_action_map": {
-    "<캐릭터명>": ["행동1 (이유)", "행동2 (이유)"]
-  },
-  "request_match": {
-    "requested_bad_action": "<요청한 나쁜 행동>",
-    "is_present": <true/false>,
-    "note": "<한 줄 설명>"
-  },
-  "conflict_analysis": {
-    "cause": "<갈등 원인 요약>",
-    "both_at_fault": <true/false>,
-    "fault_details": "<양쪽 잘못이 있다면 각각 무엇인지. 한쪽만이라면 null>",
-    "both_apologized": <true/false | null>
-  },
+  "character_actions": "<사전 분석 ①: 등장인물별 행동 체인 요약>",
+  "reflection_path": "<사전 분석 ②: 반성이 어떤 경로로 이루어졌는지 구체적으로>",
   "scores": {
-    "positive_message": <1~5>,
-    "role_model": <1~5>,
-    "violence_scariness": <1~5>,
-    "diverse_repr": <1~5>,
-    "narrative_integrity": <1~5>
+    "서사적_맥락": <1~5 정수>,
+    "아동_모델링": <1~5 정수>,
+    "도덕_메시지": <1~5 정수>,
+    "편견_고정관념": <1~5 정수>
   },
-  "score_reasons": {
-    "positive_message": "<점수 근거: 만점이 아니라면 구체적으로 어떤 장면/문장이 문제인지 명시>",
-    "role_model": "<점수 근거: 만점이 아니라면 무엇이 부족한지 명시>",
-    "violence_scariness": "<점수 근거: 만점이 아니라면 어떤 부분이 급하게 처리됐는지 명시>",
-    "diverse_repr": "<점수 근거: 만점이 아니라면 어떤 편견 표현이 있는지 명시>",
-    "narrative_integrity": "<점수 근거: 만점이 아니라면 어떤 인과관계가 약한지, 누가 책임을 안 졌는지 명시>"
+  "reasons": {
+    "서사적_맥락": "<몇 점 기준 해당 + 이유 + 왜 더 높지 않은지>",
+    "아동_모델링": "<몇 점 기준 해당 + 이유 + 왜 더 높지 않은지>",
+    "도덕_메시지": "<몇 점 기준 해당 + 이유 + 왜 더 높지 않은지>",
+    "편견_고정관념": "<몇 점 기준 해당 + 이유 + 왜 더 높지 않은지>"
   },
-  "apology_check": {
-    "bad_actor": "<나쁜 행동을 한 캐릭터>",
-    "apology_trigger": "<사과하게 된 계기. 없으면 none>",
-    "who_apologized_first": "<먼저 사과한 캐릭터>",
-    "is_reversed": <true/false>
-  },
-  "average": <소수점 1자리>,
-  "pass": <true/false>,
-  "overall_feedback": "<전체 동화 한 줄 평가>",
-  "rewrite_instruction": "<FAIL 시 구체적 수정 지시. PASS면 null>"
-}
-"""
+  "flagged_analysis": "<사전 분석 ③: 부정적 표현 목록 + 각각 서사상 필요 여부 + 순화 가능 여부>",
+  "overall_judgment": "<PASS 또는 FAIL>",
+  "fail_reasons": ["<불합격 항목과 구체적 이유>"],
+  "rewrite_instructions": "<FAIL 시 구체적 수정 지시. PASS면 빈 문자열>"
+}"""
 
 
-@dataclass
-class EvaluationResult:
-    scores: dict
-    average: float
-    passed: bool
-    overall_feedback: str
-    rewrite_instruction: str | None
-    raw_response: str
-    character_action_map: dict = None
-    request_match: dict = None
-    score_reasons: dict = None
-    apology_check: dict = None
-    conflict_analysis: dict = None  # 갈등 원인 분석 (양측 잘못 여부)
+EVAL_USER_TEMPLATE = """[사용자 원래 요청]
+{user_request}
+
+[동화 전문]
+{story}
+
+[1차 세이프가드 태깅 결과]
+{flagged_info}
+
+사전 분석(등장인물 행동 추적 → 반성 경로 확인 → 부정적 표현 검토)을 먼저 수행한 뒤
+CSM 기준으로 채점하세요."""
+
+
+# ── 기획 프롬프트 (Solar 담당) ────────────────────────────────────────────────
+# Solar Pro3는 추론·기획에 강한 대형 모델이라 교훈 전달 방식 선택을 맡긴다.
+# 카나나 nano(2.1B)는 추론보다 한국어 텍스트 생성에 집중시킨다.
+
+PLAN_SYSTEM = """당신은 아동 교육 전문가이자 동화 작가입니다.
+사용자가 설명한 상황을 바탕으로, 6~7세 아동에게 교훈을 전달하는 동화를 기획하세요.
+
+[전달 방식 옵션]
+- 역지사지: 주인공이 피해자 입장을 직접 경험하며 깨닫는 방식
+- 제3자 조언: 현명한 조력자(동물, 나무, 친구 등)가 주인공에게 가르침을 주는 방식
+- 결과 체험: 잘못된 행동의 결과를 주인공이 직접 겪으며 반성하는 방식
+- 감정 공감: 상대방의 감정을 느끼고 이해하는 과정을 통해 변화하는 방식
+
+[제약 사항]
+- 주인공 이름은 성별이 드러나지 않는 이름으로 설정 (예: 도담, 하늘, 솔이, 누리, 봄이)
+- 공주/왕자/왕/여왕/아들/딸/남자아이/여자아이 사용 금지
+- 특정 인종·직업·지역 고정관념 없이 설정
+
+[출력 형식] 반드시 아래 형식 그대로 출력하세요:
+[핵심 교훈] <한 문장으로 명확하게>
+[전달 방식] <위 4가지 중 선택한 방식 + 이 방식을 선택한 이유 한 문장>
+[주인공 설정] <이름(성별 중립) + 처한 상황 한 문장>
+[조력자/계기] <변화를 이끄는 존재 또는 사건 한 문장>
+[결말 방향] <어떤 깨달음이나 변화로 마무리되는지 한 문장>
+[동화 분위기] <따뜻한 / 유쾌한 / 진지한 / 모험적인 중 선택>"""
+
+PLAN_USER_TEMPLATE = "다음 상황에 맞는 6~7세용 동화를 기획해 주세요:\n\n{user_request}"
 
 
 class SolarEvaluator:
-    def __init__(self):
-        api_key = os.getenv("UPSTAGE_API_KEY")
-        if not api_key:
-            raise ValueError("UPSTAGE_API_KEY 환경변수가 없습니다.")
-        self.client = OpenAI(
-            api_key=api_key,
-            base_url="https://api.upstage.ai/v1/solar",
-        )
-        self.model = "solar-pro"
+    """Solar API 기반 2차 맥락 평가 및 Prompt Rewriter"""
 
-    # ── 평가 ──────────────────────────────────────────────────────────────
+    def __init__(self, api_key: str):
+        self.api_key = api_key
+        self.headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+
+
+    def plan(self, user_request: str) -> str:
+        """
+        Solar Pro3가 동화 기획을 수행한다.
+
+        카나나 nano(2.1B)는 추론 능력이 제한적이므로,
+        어떤 방식으로 교훈을 전달할지 같은 고차원 기획은
+        Solar Pro3가 담당하고 결과를 카나나에게 전달한다.
+        """
+        logger.info("Solar — 동화 기획 생성 중...")
+        plan_text = self._call_api(
+            messages=[
+                {"role": "system", "content": PLAN_SYSTEM},
+                {"role": "user", "content": PLAN_USER_TEMPLATE.format(user_request=user_request)},
+            ],
+            max_tokens=512,
+            temperature=0.7,
+        )
+        logger.info(f"Solar 기획 완료")
+        return plan_text
+
+    def _call_api(
+        self,
+        messages: List[Dict],
+        max_tokens: int = 1024,
+        temperature: float = 0.3,
+    ) -> str:
+        """Solar API를 호출하고 응답 텍스트를 반환한다."""
+        payload = {
+            "model": SOLAR_MODEL,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
+        resp = requests.post(
+            SOLAR_API_URL,
+            headers=self.headers,
+            json=payload,
+            timeout=60,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        return data["choices"][0]["message"]["content"].strip()
+
+    def _parse_eval_json(self, raw: str) -> Dict:
+        """JSON 응답에서 코드펜스를 제거하고 파싱한다."""
+        # 마크다운 코드펜스 제거
+        cleaned = re.sub(r"```(?:json)?|```", "", raw).strip()
+        try:
+            return json.loads(cleaned)
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON 파싱 실패:\n{cleaned}\n오류: {e}")
+            # 기본 실패 구조 반환
+            return {
+                "scores": {
+                    "서사적_맥락": 0,
+                    "아동_모델링": 0,
+                    "도덕_메시지": 0,
+                    "편견_고정관념": 0,
+                },
+                "reasons": {
+                    "서사적_맥락": "파싱 오류",
+                    "아동_모델링": "파싱 오류",
+                    "도덕_메시지": "파싱 오류",
+                    "편견_고정관념": "파싱 오류",
+                },
+                "flagged_analysis": "파싱 오류",
+                "overall_judgment": "FAIL",
+                "fail_reasons": ["평가 결과 파싱 실패"],
+                "rewrite_instructions": "동화를 처음부터 다시 작성하세요.",
+            }
+
     def evaluate(
         self,
-        fairy_tale_text: str,
-        original_request: str,
-        calibration_sample: dict = None,
-    ) -> EvaluationResult:
+        story: str,
+        flagged_sentences: List[Dict],
+        user_request: str = "",
+    ) -> Tuple[Dict, bool, str]:
         """
-        동화를 평가합니다.
+        동화를 2차 평가한다.
 
         Args:
-            calibration_sample: data_loader.get_calibration_sample() 반환값.
-                                 제공 시 평가 기준점으로 사용.
+            story             : 동화 전문
+            flagged_sentences : 1차에서 태깅된 요주의 문장 리스트
+            user_request      : 사용자 원래 요청 (맥락 제공용)
+
+        Returns:
+            result  : 평가 결과 dict
+            passed  : 합격 여부 (bool)
+            summary : 사람이 읽을 수 있는 평가 요약 문자열
         """
-        calib_block = ""
-        if calibration_sample:
-            calib_block = f"""
-[평가 기준점 - 실제 아동 동화 예시]
-제목: {calibration_sample['title']}
-단어 수: {calibration_sample['word_count']}개
-내용: {calibration_sample['text'][:400]}...
-(위 동화를 5점짜리 기준으로 삼아 상대적으로 평가하세요)
-"""
+        # 요주의 문장 정보 포맷팅
+        if flagged_sentences:
+            flagged_lines = []
+            for f in flagged_sentences:
+                flagged_lines.append(
+                    f"  - [{f['idx']+1}번 문장] {f['category']}({f['desc']}): {f['sentence']}"
+                )
+            flagged_info = "\n".join(flagged_lines)
+        else:
+            flagged_info = "없음. 단, 동화 내 부정적 표현(바보, 멍청이 등 경미한 표현 포함)은 사전 분석 ③에서 직접 검토할 것."
 
-        user_message = f"""[사용자 요청]
-{original_request}
-
-[평가할 동화]
-{fairy_tale_text}
-{calib_block}
-위 동화를 평가 기준에 따라 평가해주세요."""
-
-        print("[Evaluator] Solar 평가 중...")
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": EVALUATION_SYSTEM_PROMPT},
-                {"role": "user", "content": user_message},
-            ],
-            temperature=0.1,
-            max_tokens=2500,
+        user_msg = EVAL_USER_TEMPLATE.format(
+            story=story,
+            flagged_info=flagged_info,
+            user_request=user_request or "미입력",
         )
-        raw = response.choices[0].message.content.strip()
-        return self._parse_response(raw)
 
-    # ── Solar 직접 첨삭 ────────────────────────────────────────────────────
-    def rewrite_tale(
+        logger.info("2차 평가 실행 중 (Solar API)...")
+        raw = self._call_api(
+            messages=[
+                {"role": "system", "content": EVAL_SYSTEM},
+                {"role": "user", "content": user_msg},
+            ]
+        )
+
+        result = self._parse_eval_json(raw)
+        scores = result.get("scores", {})
+        avg_score = sum(scores.values()) / len(scores) if scores else 0
+        min_score = min(scores.values()) if scores else 0
+
+        passed = (avg_score >= PASS_AVG) and (min_score >= PASS_MIN)
+        result["average_score"] = round(avg_score, 2)
+        result["min_score"] = round(min_score, 2)
+        result["pass_threshold_avg"] = PASS_AVG
+        result["pass_threshold_min"] = PASS_MIN
+
+        # 평가 요약 문자열 생성
+        summary = self._build_summary(result, passed)
+        logger.info(f"2차 평가 완료 — 평균: {avg_score:.2f} / 합격: {passed}")
+
+        return result, passed, summary
+
+    def _build_summary(self, result: Dict, passed: bool) -> str:
+        """사람이 읽기 쉬운 평가 요약을 생성한다."""
+        scores = result.get("scores", {})
+        reasons = result.get("reasons", {})
+        lines = [
+            "=" * 60,
+            f"  2차 평가 결과: {'✅ PASS' if passed else '❌ FAIL'}",
+            f"  평균 점수: {result.get('average_score', 0):.2f} / 5.00",
+            f"  최저 점수: {result.get('min_score', 0):.2f} / 5.00",
+            f"  합격 기준: 평균 {PASS_AVG}점 이상 AND 항목별 최저 {PASS_MIN}점 이상",
+        ]
+
+        # 사전 분석 결과 출력
+        if result.get("character_actions"):
+            lines += [
+                "-" * 60,
+                "  [등장인물 행동 추적]",
+                f"  {result['character_actions']}",
+            ]
+        if result.get("reflection_path"):
+            lines += [
+                "  [반성 경로]",
+                f"  {result['reflection_path']}",
+            ]
+
+        lines += ["-" * 60, "  [항목별 점수]"]
+        score_names = {
+            "서사적_맥락": "서사적 맥락",
+            "아동_모델링": "아동 모델링",
+            "도덕_메시지": "도덕 메시지",
+            "편견_고정관념": "편견·고정관념",
+        }
+        for key, label in score_names.items():
+            score = scores.get(key, "-")
+            reason = reasons.get(key, "")
+            lines.append(f"  • {label}: {score}점")
+            lines.append(f"    → {reason}")
+
+        if result.get("flagged_analysis"):
+            lines += [
+                "-" * 60,
+                "  [부정적 표현 검토]",
+                f"  {result['flagged_analysis']}",
+            ]
+
+        if not passed and result.get("fail_reasons"):
+            lines += ["-" * 60, "  [불합격 사유]"]
+            for r in result["fail_reasons"]:
+                lines.append(f"  • {r}")
+
+        if not passed and result.get("rewrite_instructions"):
+            lines += [
+                "-" * 60,
+                "  [수정 지시사항]",
+                f"  {result['rewrite_instructions']}",
+            ]
+
+        lines.append("=" * 60)
+        return "\n".join(lines)
+
+
+    def rewrite_story(
         self,
-        original_tale: str,
-        evaluation: EvaluationResult,
-        original_request: str,
+        plan: str,
+        previous_story: str,
+        eval_result: Dict,
     ) -> str:
         """
-        Solar가 동화를 직접 첨삭합니다.
-        캐릭터·배경·전체 줄거리는 유지하고 문제 문장만 최소한으로 수정합니다.
+        [MODE B 전용] Solar가 이전 동화를 직접 수정한 새 버전을 생성한다.
+
+        카나나에게 hint를 전달하는 MODE A와 달리,
+        Solar가 평가 결과를 직접 참고하여 동화 전문을 수정한다.
+
+        흐름:
+          Solar 평가 → fail_reasons + rewrite_instructions 확인
+          → 이전 동화 전문 + 기획서 + 수정 지시 → Solar가 새 동화 직접 작성
+
+        장점: hint 해석 오류 없음, 평가 맥락 완전 보존
+        단점: Solar API 추가 호출 비용, Solar의 한국어 동화 생성 품질이
+              카나나 대비 낮을 수 있음 (실험으로 비교 필요)
+
+        Args:
+            plan           : 1회차에 생성된 동화 기획서
+            previous_story : 직전 시도에서 생성된 동화 전문
+            eval_result    : 직전 시도의 2차 평가 결과 dict
+
+        Returns:
+            수정된 동화 본문 문자열
         """
-        # 문제 위치 특정
-        apology = evaluation.apology_check or {}
-        apology_info = ""
-        if apology:
-            apology_info = f"""
-[사과 구조 분석]
-- 나쁜 행동 캐릭터: {apology.get('bad_actor', '?')}
-- 먼저 사과한 캐릭터: {apology.get('who_apologized_first', '?')}
-- 역전 구조: {'예' if apology.get('is_reversed') else '아니오'}
-- 사과 계기: {apology.get('apology_trigger', 'none')}"""
+        scores = eval_result.get("scores", {})
+        fail_reasons = eval_result.get("fail_reasons", [])
+        rewrite_instructions = eval_result.get("rewrite_instructions", "")
 
-        system_prompt = """당신은 아동 동화 편집자입니다.
-원본 동화의 캐릭터·배경·전체 줄거리는 반드시 유지하고,
-지적된 문제 부분의 문장만 최소한으로 수정하세요.
+        # 항목별 점수 요약
+        score_lines = []
+        score_labels = {
+            "서사적_맥락": "서사적 맥락",
+            "아동_모델링": "아동 모델링",
+            "도덕_메시지": "도덕 메시지",
+            "편견_고정관념": "편견·고정관념",
+        }
+        for key, label in score_labels.items():
+            score_lines.append(f"  {label}: {scores.get(key, '-')}점")
 
-수정 규칙:
-1. 나쁜 행동을 한 캐릭터가 직접 사과해야 합니다
-2. 사과하게 된 감정 변화 계기를 한 문장으로 명시하세요
-   예: "친구가 우는 모습을 보고 마음이 아팠어요. 그래서 사과했어요."
-3. 피해자가 먼저 사과하는 장면은 삭제하고 가해자 사과로 교체하세요
-4. 서술문은 "~했어요", "~였어요" 높임말로 작성하세요
-5. 수정 후 동화 전체를 출력하세요 (설명 없이 동화만)"""
+        system_prompt = """당신은 6~7세 아동을 위한 한국어 동화 편집자입니다.
+기존 동화의 문제점을 수정하여 더 나은 버전을 작성하세요.
 
-        user_message = f"""[원본 동화]
-{original_tale}
+[수정 규칙]
+- 전체 글자 수는 600자 이상 1,000자 이하로 작성하세요.
+- 짧고 쉬운 단어를 사용하세요 (초등 1학년 수준).
+- 기승전결 구조를 반드시 포함하세요.
+- 갈등이 있더라도 반성·사과·화해 등 긍정적 결말로 마무리하세요.
+- 특정 성별·인종·직업을 고정관념화하지 마세요.
+- 공주, 왕자, 왕, 여왕, 아들, 딸, 남자아이, 여자아이는 절대 사용하지 마세요.
+- 동화 본문만 출력하세요. 설명이나 주석을 달지 마세요."""
 
-[수정 지시]
-{evaluation.rewrite_instruction}
-{apology_info}
+        fail_reasons_text = "\n".join(f"  - {r}" for r in fail_reasons) if fail_reasons else "없음"
+        score_text = "\n".join(score_lines)
+        user_prompt = (
+            f"[원본 기획서]\n{plan}\n\n"
+            f"[수정 전 동화]\n{previous_story}\n\n"
+            f"[평가 점수]\n{score_text}\n\n"
+            f"[불합격 사유]\n{fail_reasons_text}\n\n"
+            f"[구체적인 수정 지시]\n{rewrite_instructions}\n\n"
+            f"위 수정 지시를 반영하여 동화를 개선하세요. 동화 본문만 출력하세요. (600자 이상 1,000자 이하)"
+        )
 
-[사용자 원래 요청]
-{original_request}
-
-위 지시에 따라 최소한으로 수정한 동화 전체를 출력하세요."""
-
-        print("[Evaluator] Solar 첨삭 중...")
-        response = self.client.chat.completions.create(
-            model=self.model,
+        logger.info("Solar — 동화 직접 수정 중 (MODE B)...")
+        story = self._call_api(
             messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_message},
+                {"role": "user", "content": user_prompt},
             ],
-            temperature=0.3,
-            max_tokens=2500,
+            max_tokens=1024,
+            temperature=0.7,
         )
-        return response.choices[0].message.content.strip()
+        char_count = len(story.replace(" ", ""))
+        logger.info(f"Solar 직접 수정 완료 — 글자 수(공백 제외): {char_count}자")
+        return story
 
-    # ── 카나나 재생성용 프롬프트 (fallback) ───────────────────────────────
-    def build_rewrite_prompt(
-        self,
-        original_request: str,
-        evaluation: EvaluationResult,
-    ) -> str:
-        score_lines = "\n".join(
-            f"  - {k}: {v}점 ({evaluation.score_reasons.get(k, '')})"
-            for k, v in evaluation.scores.items()
-        ) if evaluation.score_reasons else "\n".join(
-            f"  - {k}: {v}점" for k, v in evaluation.scores.items()
-        )
-        return f"""[원래 요청]
-{original_request}
-
-[이전 동화의 문제점]
-{evaluation.overall_feedback}
-
-[항목별 점수]
-{score_lines}
-
-[구체적 수정 지시]
-{evaluation.rewrite_instruction}
-
-위 문제를 해결하여 처음부터 새 동화를 써주세요.
-나쁜 행동을 한 캐릭터가 직접 사과하고, 왜 사과했는지 반드시 서술하세요.
-"""
-
-    # ── 내부 유틸 ─────────────────────────────────────────────────────────
-    def _parse_response(self, raw: str) -> EvaluationResult:
-        cleaned = re.sub(r"```(?:json)?\s*", "", raw).strip().rstrip("`").strip()
-
-        # 1차: 완전한 JSON
-        try:
-            data = json.loads(cleaned)
-            return self._build_result(data, raw)
-        except json.JSONDecodeError:
-            pass
-
-        # 2차: scores만 추출
-        scores_match = re.search(r'"scores"\s*:\s*\{([^}]+)\}', cleaned, re.DOTALL)
-        if scores_match:
-            try:
-                scores = json.loads("{" + scores_match.group(1) + "}")
-                avg_match = re.search(r'"average"\s*:\s*([\d.]+)', cleaned)
-                average = float(avg_match.group(1)) if avg_match else (
-                    sum(scores.values()) / len(scores)
-                )
-                pass_match = re.search(r'"pass"\s*:\s*(true|false)', cleaned, re.I)
-                passed = (pass_match.group(1).lower() == "true") if pass_match else (
-                    average >= PASS_AVERAGE and min(scores.values(), default=0) >= PASS_MIN_SCORE
-                )
-                fb_match = re.search(r'"overall_feedback"\s*:\s*"([^"]*)"', cleaned)
-                rw_match = re.search(r'"rewrite_instruction"\s*:\s*"([^"]*)"', cleaned)
-                print("[Evaluator] 부분 파싱 성공")
-                return EvaluationResult(
-                    scores=scores, average=round(float(average), 2), passed=passed,
-                    overall_feedback=fb_match.group(1) if fb_match else "(응답 잘림)",
-                    rewrite_instruction=rw_match.group(1) if rw_match else None,
-                    raw_response=raw,
-                )
-            except Exception:
-                pass
-
-        # 3차: 실패
-        print(f"[Evaluator] JSON 파싱 실패:\n{raw[:300]}")
-        return EvaluationResult(
-            scores={k: 0 for k in ["positive_message","role_model",
-                                    "violence_scariness","diverse_repr","narrative_integrity"]},
-            average=0.0, passed=False,
-            overall_feedback="평가 파싱 실패",
-            rewrite_instruction="동화를 다시 생성해주세요.",
-            raw_response=raw,
-        )
-
-    def _build_result(self, data: dict, raw: str) -> EvaluationResult:
-        scores = data.get("scores", {})
-        average = data.get("average", sum(scores.values()) / len(scores) if scores else 0)
-
-        # narrative_integrity 하드 룰
-        narrative_score = scores.get("narrative_integrity", 5)
-        apology_check = data.get("apology_check", {})
-        is_reversed = apology_check.get("is_reversed", False)
-
-        if narrative_score < NARRATIVE_HARD_MIN or is_reversed:
-            passed = False
-            if is_reversed:
-                print(f"[Evaluator] ❌ 하드룰 FAIL: 사과 역전 "
-                      f"(가해자={apology_check.get('bad_actor')}, "
-                      f"먼저 사과={apology_check.get('who_apologized_first')})")
-            if narrative_score < NARRATIVE_HARD_MIN:
-                print(f"[Evaluator] ❌ 하드룰 FAIL: narrative_integrity {narrative_score}점")
-        else:
-            passed = data.get("pass",
-                average >= PASS_AVERAGE and
-                min(scores.values(), default=0) >= PASS_MIN_SCORE
-            )
-
-        # 요청 미반영 하드 룰
-        request_match = data.get("request_match", {})
-        if not request_match.get("is_present", True):
-            passed = False
-            print(f"[Evaluator] ❌ 하드룰 FAIL: 요청 상황 미반영 "
-                  f"({request_match.get('note', '')})")
-
-        # 양측 잘못인데 한쪽만 사과한 경우 하드 룰
-        conflict = data.get("conflict_analysis", {})
-        if (conflict.get("both_at_fault") and
-                conflict.get("both_apologized") is False):
-            passed = False
-            print(f"[Evaluator] ❌ 하드룰 FAIL: 양측 잘못인데 한쪽만 사과 "
-                  f"({conflict.get('fault_details', '')})")
-
-        return EvaluationResult(
-            scores=scores,
-            average=round(float(average), 2),
-            passed=passed,
-            overall_feedback=data.get("overall_feedback", ""),
-            rewrite_instruction=data.get("rewrite_instruction"),
-            raw_response=raw,
-            character_action_map=data.get("character_action_map"),
-            request_match=request_match,
-            score_reasons=data.get("score_reasons"),
-            apology_check=apology_check,
-            conflict_analysis=conflict,
-        )
+    def build_rewrite_hint(self, eval_result: Dict) -> str:
+        """
+        평가 결과에서 Generator에게 전달할 재작성 힌트를 추출한다.
+        fail_reasons + rewrite_instructions 를 합산하여 반환.
+        """
+        parts = []
+        if eval_result.get("fail_reasons"):
+            parts.append("개선이 필요한 문제점:")
+            for r in eval_result["fail_reasons"]:
+                parts.append(f"  - {r}")
+        if eval_result.get("rewrite_instructions"):
+            parts.append(f"\n구체적인 수정 지시:")
+            parts.append(eval_result["rewrite_instructions"])
+        return "\n".join(parts)

@@ -1,92 +1,121 @@
 """
 safeguard.py
-카나나 세이프가드 8B로 동화 전체를 한 번에 유해성 분류합니다.
+카나나 세이프가드 8B를 이용한 1차 문장 단위 유해성 분류.
 
-변경된 사용 방식:
-  이전: 문장 단위 루프 → 속도 느리고 아동 동화는 항상 SAFE
-  현재: 동화 전체 텍스트를 1회 입력 → 심각한 케이스(S5 아동 성착취 등)만 안전망으로 탐지
-
-역할: 최종 판단이 아닌 심각한 유해 콘텐츠 조기 차단 안전망
-      맥락 판단은 Solar(2차 평가)가 담당
+동작 방식:
+- 동화를 문장 단위로 분리한다.
+- 각 문장에 대해 safeguard를 호출하여 SAFE / UNSAFE-Sx 를 판정한다.
+- UNSAFE 문장은 카테고리와 함께 "요주의 문장"으로 태깅하여 반환한다.
+- 1차 평가의 역할은 최종 판단이 아닌 의심 문장 탐지 + 카테고리 태깅에 한정된다.
 
 카테고리:
-  S1 증오  S2 괴롭힘  S3 성적 콘텐츠  S4 범죄
-  S5 아동 성착취  S6 자살·자해  S7 잘못된 정보
+  S1 증오, S2 괴롭힘, S3 성적콘텐츠, S4 범죄,
+  S5 아동성착취, S6 자살·자해, S7 잘못된정보
 """
 
 import re
+import logging
+from typing import List, Tuple, Dict
+
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoTokenizer, AutoModelForCausalLM
+
+logger = logging.getLogger(__name__)
+
+# ── 상수 ──────────────────────────────────────────────────────────────────────
+SAFEGUARD_MODEL_ID = "kakaocorp/kanana-safeguard-8b"
+
+CATEGORY_DESC: Dict[str, str] = {
+    "S1": "증오(차별·혐오)",
+    "S2": "괴롭힘",
+    "S3": "성적 콘텐츠",
+    "S4": "범죄·폭력",
+    "S5": "아동 성착취",
+    "S6": "자살·자해",
+    "S7": "잘못된 정보",
+}
+
+# 문장 분리용 정규식 (마침표, 물음표, 느낌표 뒤 공백 기준)
+SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?요])\s+")
+
+# kanana-safeguard 프롬프트 형식 (모델 카드 기준)
+SAFEGUARD_PROMPT_TEMPLATE = (
+    "<start_of_turn>user\n{text}<end_of_turn>\n<start_of_turn>model\n"
+)
 
 
 class KananaSafeguard:
-    def __init__(self, model_name: str = "kakaocorp/kanana-safeguard-8b"):
-        print(f"[Safeguard] 모델 로딩 중: {model_name}")
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+    """카나나 세이프가드 8B 래퍼"""
+
+    def __init__(self, device: str = "cuda"):
+        self.device = device
+        logger.info(f"Safeguard 디바이스: {self.device}")
+        self._load_model()
+
+    def _load_model(self):
+        logger.info(f"Safeguard 모델 로딩: {SAFEGUARD_MODEL_ID}")
+        self.tokenizer = AutoTokenizer.from_pretrained(SAFEGUARD_MODEL_ID)
         self.model = AutoModelForCausalLM.from_pretrained(
-            model_name,
+            SAFEGUARD_MODEL_ID,
             torch_dtype=torch.float16,
             device_map="auto",
         )
         self.model.eval()
-        print("[Safeguard] 모델 로딩 완료")
+        logger.info("Safeguard 모델 로딩 완료")
 
-    def check(self, fairy_tale_text: str) -> dict:
+    def classify_sentence(self, sentence: str) -> str:
         """
-        동화 전체를 1회 입력하여 유해성을 분류합니다.
-
-        Returns:
-            {
-                "is_safe": bool,
-                "label": "SAFE" | "S1"~"S7",
-                "category": str,   # 카테고리 설명 (SAFE면 빈 문자열)
-            }
+        단일 문장을 분류한다.
+        Returns: '<SAFE>' 또는 '<UNSAFE-Sx>'
         """
-        CATEGORIES = {
-            "S1": "증오 (출신·인종·성별·종교 등 차별)",
-            "S2": "괴롭힘 (위협·불쾌감·타인 공격 조장)",
-            "S3": "성적 콘텐츠",
-            "S4": "범죄 (폭력·불법 행위 기획)",
-            "S5": "아동 성착취",
-            "S6": "자살·자해",
-            "S7": "잘못된 정보",
-        }
-
-        messages = [
-            {"role": "user", "content": fairy_tale_text},
-            {"role": "assistant", "content": ""},
-        ]
-        input_ids = self.tokenizer.apply_chat_template(
-            messages, tokenize=True, return_tensors="pt"
-        ).to(self.model.device)
-        attention_mask = (input_ids != self.tokenizer.pad_token_id).long()
+        prompt = SAFEGUARD_PROMPT_TEMPLATE.format(text=sentence)
+        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
 
         with torch.no_grad():
-            output_ids = self.model.generate(
-                input_ids,
-                attention_mask=attention_mask,
-                max_new_tokens=1,
+            output = self.model.generate(
+                **inputs,
+                max_new_tokens=10,
+                do_sample=False,
                 pad_token_id=self.tokenizer.eos_token_id,
             )
 
-        gen_idx = input_ids.shape[-1]
-        result = self.tokenizer.decode(
-            output_ids[0][gen_idx], skip_special_tokens=True
-        ).strip()
+        # 프롬프트 이후 생성 토큰만 디코딩
+        generated = output[0][inputs["input_ids"].shape[-1]:]
+        result = self.tokenizer.decode(generated, skip_special_tokens=True).strip()
+        return result
 
-        # 결과 파싱
-        if "<SAFE>" in result or result.upper() == "SAFE":
-            label = "SAFE"
-        else:
-            match = re.search(r"UNSAFE[-_]?(S[1-7])", result.upper())
-            label = match.group(1) if match else "SAFE"
+    def evaluate_story(self, story: str) -> Tuple[List[str], List[Dict]]:
+        """
+        동화 전체를 문장 단위로 평가한다.
 
-        is_safe = label == "SAFE"
-        category = CATEGORIES.get(label, "") if not is_safe else ""
+        Returns:
+            sentences      : 분리된 문장 리스트
+            flagged        : 요주의 문장 정보 리스트
+                            [{"idx": int, "sentence": str, "category": str, "desc": str}]
+        """
+        # 문장 분리 (빈 문장 제거)
+        sentences = [s.strip() for s in SENTENCE_SPLIT_RE.split(story) if s.strip()]
+        flagged: List[Dict] = []
 
-        if is_safe:
-            print(f"[Safeguard] ✅ SAFE")
-        else:
-            print(f"[Safeguard] ❌ UNSAFE-{label}: {category}")
+        logger.info(f"1차 평가 시작 — 총 {len(sentences)}개 문장")
 
-        return {"is_safe": is_safe, "label": label, "category": category}
+        for idx, sent in enumerate(sentences):
+            result = self.classify_sentence(sent)
+            logger.debug(f"  [{idx+1}] {result} | {sent[:40]}...")
+
+            if result.startswith("<UNSAFE"):
+                # '<UNSAFE-S4>' → 'S4'
+                category = result.strip("<>").replace("UNSAFE-", "")
+                desc = CATEGORY_DESC.get(category, "기타")
+                flagged.append({
+                    "idx": idx,
+                    "sentence": sent,
+                    "category": category,
+                    "desc": desc,
+                })
+                logger.info(f"  ⚠ 요주의: [{idx+1}] {category}({desc}) — {sent[:50]}")
+
+        logger.info(
+            f"1차 평가 완료 — 요주의 문장 {len(flagged)}개 / 전체 {len(sentences)}개"
+        )
+        return sentences, flagged

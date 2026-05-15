@@ -1,109 +1,101 @@
 """
 data_loader.py
-data/ 폴더의 동화 JSON 데이터셋을 로드합니다.
-
-활용 방향:
-- few-shot 생성 가이드: "의사소통" 분류 동화 → 대화 중심, 동화체 문체 가이드
-- 평가 캘리브레이션: Solar 평가 시 "이 정도가 기준점" 제시용
+───────────────
+아동 동화 데이터셋(JSON) 로더.
+'의사소통' 분류 동화만 필터링하여 Few-shot 예시 등으로 활용.
 """
 
 import json
+import os
+import glob
 import random
-from pathlib import Path
-from typing import Optional
+from typing import List, Dict, Optional
 
 
-def load_fairy_tales(data_dir: str = "data") -> list[dict]:
-    """data/ 폴더의 모든 JSON 동화 파일을 로드합니다."""
-    tales = []
-    data_path = Path(data_dir)
-    if not data_path.exists():
-        print(f"[DataLoader] 경고: {data_dir} 폴더가 없습니다.")
-        return tales
-    for json_file in data_path.glob("*.json"):
+DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
+
+
+def load_all_stories(data_dir: str = DATA_DIR) -> List[Dict]:
+    """data/ 폴더 안의 JSON 파일을 모두 로드."""
+    stories = []
+    pattern = os.path.join(data_dir, "*.json")
+    for filepath in glob.glob(pattern):
         try:
-            with open(json_file, "r", encoding="utf-8") as f:
-                tales.append(json.load(f))
+            with open(filepath, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            stories.append(data)
         except Exception as e:
-            print(f"[DataLoader] {json_file.name} 로드 실패: {e}")
-    print(f"[DataLoader] {len(tales)}개 동화 로드 완료")
-    return tales
+            print(f"[DataLoader] {filepath} 로드 실패: {e}")
+    return stories
 
 
-def extract_full_text(tale: dict) -> str:
-    """srcPage 기준으로 정렬한 전체 텍스트를 반환합니다."""
-    paragraphs = sorted(
-        tale.get("paragraphInfo", []), key=lambda p: p.get("srcPage", 0)
-    )
-    return "\n".join(p["srcText"] for p in paragraphs)
+def filter_by_classification(
+    stories: List[Dict],
+    classification: str = "의사소통"
+) -> List[Dict]:
+    """특정 분류(classification)에 해당하는 동화만 반환."""
+    return [s for s in stories if s.get("classification") == classification]
 
 
-def get_few_shot_samples(
-    tales: list[dict],
-    n: int = 3,
-    seed: int = 42,
-) -> list[dict]:
+def story_to_text(story: Dict) -> str:
     """
-    Generator few-shot 가이드용 샘플을 반환합니다.
-
-    "의사소통" 분류 동화를 우선 선택합니다.
-    이 분류는 대화 중심, 짧은 문장, 동화체 문체가 특징입니다.
-
-    Returns:
-        [{"title": str, "text": str, "word_count": int}, ...]
+    동화 JSON을 srcPage 순서대로 연결한 전체 텍스트로 변환.
+    paragraphInfo가 없으면 빈 문자열 반환.
     """
-    comm_tales = [t for t in tales if t.get("classification") == "의사소통"]
-    pool = comm_tales if len(comm_tales) >= n else tales
-    print(f"[DataLoader] few-shot 풀: {len(pool)}개 (의사소통 {len(comm_tales)}개)")
-
-    random.seed(seed)
-    sampled = random.sample(pool, min(n, len(pool)))
-    result = []
-    for tale in sampled:
-        text = extract_full_text(tale)
-        word_count = sum(
-            p.get("srcWordEA", 0) for p in tale.get("paragraphInfo", [])
-        )
-        result.append({
-            "title": tale.get("title", "제목 없음"),
-            "text": text,
-            "word_count": word_count,
-        })
-    return result
-
-
-def build_few_shot_block(samples: list[dict], chars_per_sample: int = 300) -> str:
-    """
-    Generator 시스템 프롬프트에 삽입할 few-shot 블록을 만듭니다.
-    각 샘플은 앞부분 chars_per_sample 글자만 사용합니다.
-    """
-    if not samples:
+    paragraphs = story.get("paragraphInfo", [])
+    if not paragraphs:
         return ""
-    lines = ["[참고 동화 예시 - 문체와 리듬감을 참고하세요]"]
-    for i, s in enumerate(samples, 1):
-        preview = s["text"][:chars_per_sample]
-        if len(s["text"]) > chars_per_sample:
-            preview += "..."
-        lines.append(f"\n--- 예시 {i}: {s['title']} ({s['word_count']}단어) ---")
-        lines.append(preview)
-    return "\n".join(lines)
+    # srcPage 기준 정렬
+    paragraphs_sorted = sorted(paragraphs, key=lambda p: p.get("srcPage", 0))
+    return "\n".join(p.get("srcText", "") for p in paragraphs_sorted)
 
 
-def get_calibration_sample(tales: list[dict], seed: int = 42) -> Optional[dict]:
+def get_reference_stories(
+    data_dir: str = DATA_DIR,
+    classification: str = "의사소통",
+    n: int = 3,
+    seed: Optional[int] = 42,
+) -> List[Dict]:
     """
-    Solar 평가 캘리브레이션용 샘플 1개를 반환합니다.
-    의사소통 분류에서 선택합니다.
+    Few-shot 프롬프트용 참고 동화 n편을 무작위 추출.
+    반환 형식: [{"title": ..., "text": ...}, ...]
     """
-    comm_tales = [t for t in tales if t.get("classification") == "의사소통"]
-    pool = comm_tales if comm_tales else tales
-    if not pool:
-        return None
-    random.seed(seed)
-    tale = random.choice(pool)
-    text = extract_full_text(tale)
-    word_count = sum(p.get("srcWordEA", 0) for p in tale.get("paragraphInfo", []))
+    all_stories = load_all_stories(data_dir)
+    filtered = filter_by_classification(all_stories, classification)
+    if seed is not None:
+        random.seed(seed)
+    sample = random.sample(filtered, min(n, len(filtered)))
+    return [
+        {
+            "title": s.get("title", "제목 없음"),
+            "readAge": s.get("readAge", "유아"),
+            "text": story_to_text(s),
+        }
+        for s in sample
+    ]
+
+
+def get_dataset_stats(data_dir: str = DATA_DIR) -> Dict:
+    """데이터셋 통계 출력용."""
+    all_stories = load_all_stories(data_dir)
+    classifications = {}
+    for s in all_stories:
+        cls = s.get("classification", "미분류")
+        classifications[cls] = classifications.get(cls, 0) + 1
     return {
-        "title": tale.get("title", "제목 없음"),
-        "text": text,
-        "word_count": word_count,
+        "total": len(all_stories),
+        "by_classification": classifications,
     }
+
+
+if __name__ == "__main__":
+    stats = get_dataset_stats()
+    print(f"전체 동화 수: {stats['total']}")
+    print("분류별:")
+    for k, v in sorted(stats["by_classification"].items(), key=lambda x: -x[1]):
+        print(f"  {k}: {v}편")
+
+    refs = get_reference_stories(n=2)
+    for r in refs:
+        print(f"\n[참고 동화] {r['title']}")
+        print(r["text"][:200], "...")

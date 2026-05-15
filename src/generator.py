@@ -1,188 +1,160 @@
 """
 generator.py
-카나나 모델로 한국어 동화를 생성합니다.
+카나나 로컬 모델을 이용해 동화 본문을 생성한다.
 
-사용 모델:
-  기본: kakaocorp/kanana-nano-2.1b-instruct  (경량, VRAM ~4GB)
-  대안: kakaocorp/kanana-1.5-8b-instruct-2505 (고품질, VRAM ~16GB)
-       → 변경 시 __init__의 model_name 기본값만 바꾸면 됩니다.
+[지원 모델 — 모델 ID 상수로 관리]
+  KANANA_NANO  : kakaocorp/kanana-nano-2.1b-instruct
+                 세이프가드(8B)와 합산 ~10B → A100 80GB 여유
+  KANANA_15_8B : kakaocorp/kanana-1.5-8b-instruct-2505  ← 현재 기본값
+                 세이프가드와 합산 ~36GB, A100 80GB 단일 GPU 운용 가능
 
-생성 기준 (6~7세):
-  - 단어 수 150~350개 (srcWordEA 기준, 어절 수와 실용적으로 동일)
-  - 문장당 평균 7단어 이하
-  - 높임말 서술 (~했어요, ~였어요)
-  - 편향 표현 없음
+[역할 분리 원칙]
+  기획(Plan)  → Solar API (evaluator.py)
+  동화 생성   → 카나나 (이 파일)
+  1차 평가    → 카나나 세이프가드 8B (safeguard.py)
+  2차 평가    → Solar API (evaluator.py)
+
+[동화 길이 기준]
+  6~7세 아동 그림책: 600~1,000자 (공백 제외)
+  근거: 국립어린이청소년도서관 유아 그림책 기준(2019),
+        Valentini et al.(2023) AoA<=6 어휘 연구 200~400 어절 권장
 """
 
 import re
+import logging
+from typing import Optional
+
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoTokenizer, AutoModelForCausalLM
 
-# 6~7세 동화 적정 단어 수 (데이터셋 분석 + Valentini et al., 2023 기준)
-# 6~7세 동화 적정 단어 수 (데이터셋 분석 + Valentini et al., 2023 기준)
-TARGET_MIN_WORDS = 200
-TARGET_MAX_WORDS = 350
-
-SYSTEM_PROMPT = """당신은 6~7세 어린이를 위한 한국어 동화 작가입니다.
-
-[창작 규칙]
-1. 전체 길이: 200~350단어 (문장당 평균 7단어 이하)
-2. 배경: 아이들이 공감할 수 있는 현대 일상 (유치원, 공원, 집 등). "옛날 옛적" 금지.
-3. 등장인물: 주인공과 피해자를 중심으로. 제3자(친구, 어른 등)가 등장해도 되지만 조연 역할에 그쳐야 합니다.
-4. 구성: 도입 → 갈등(나쁜 행동 발생) → 반성(스스로 느끼거나 누군가의 말을 듣고) → 사과 → 마무리
-5. 갈등 해결 방식:
-   - 나쁜 행동을 한 캐릭터가 반드시 직접 사과해야 합니다
-   - 왜 사과하게 됐는지 계기(감정 변화)를 한 문장으로 명시해야 합니다
-     예) 피해자가 우는 모습을 보고, 누군가의 말을 듣고, 혼자 생각하다가 등
-   - 가해자가 직접 사과하고 피해자가 받아들이는 장면이 있어야 합니다
-6. 갈등의 원인이 양쪽 모두에게 있을 때:
-   - 각자 자신의 잘못을 인정하고 사과해야 합니다
-   - 한쪽만 일방적으로 사과하고 끝내면 안 됩니다
-   - 예) A가 B의 장난감을 뺏었지만 B도 먼저 예의 없이 행동했다면
-         A는 뺏은 것을 사과하고, B는 예의 없이 굴었던 것을 사과해야 합니다
-7. 아이들이 이해할 수 있는 쉬운 단어 사용
-8. 편향 표현 금지:
-   - 성별 명시 단어 사용 금지 (아들, 딸, 왕자, 공주 등)
-   - 외모 중심 칭찬 금지
-   - 직업 고정관념 금지
-9. 서술문은 반드시 높임말: "~했어요", "~였어요"
-   (대사 따옴표 안은 자유)
-10. 동화 본문만 출력하세요.
-    "총 단어 수", "교훈:", "이 동화는...", "좋은 동화였습니다", "아래는",
-    번호 목록(1. 2. 3.) 같은 메타 설명은 절대 붙이지 마세요.
-    동화를 한 번만 쓰세요. 완성되면 즉시 멈추세요."""
+logger = logging.getLogger(__name__)
 
 
+# ── 모델 ID 상수 ──────────────────────────────────────────────────────────────
+KANANA_NANO  = "kakaocorp/kanana-nano-2.1b-instruct"           # 2.1B, 비교 실험용
+KANANA_15_8B = "kakaocorp/kanana-1.5-8b-instruct-2505"         # 8B,  현재 기본값
+
+DEFAULT_MODEL = KANANA_15_8B
+
+
+# ── 편향 유발 금지어 ──────────────────────────────────────────────────────────
+# 키워드 하드필터: 성별·인종·가족관계처럼 LLM 편향을 유발하는 단어를
+# 사용자 입력 단계에서 차단한다.
+# 한계: 수동 관리 필요. 단어 경계 체크로 "형광등", "오빠상" 등 합성어는 통과.
+BIASED_WORDS = {
+    "아들", "딸", "공주", "왕자", "왕", "여왕",
+    "남자아이", "여자아이", "남자", "여자",
+    "오빠", "언니", "형", "누나",
+    "흑인", "백인", "동양인", "서양인",
+    "한국인", "미국인", "중국인", "일본인",
+}
+
+BIAS_PATTERN = re.compile(
+    r"(?<![가-힣a-zA-Z])"
+    + "(" + "|".join(re.escape(w) for w in sorted(BIASED_WORDS, key=len, reverse=True)) + ")"
+    + r"(?![가-힣a-zA-Z])",
+    re.UNICODE,
+)
+
+
+def check_bias(user_input: str) -> Optional[str]:
+    """편향 단어가 포함되면 해당 단어를 반환한다. 없으면 None."""
+    m = BIAS_PATTERN.search(user_input)
+    return m.group() if m else None
+
+
+# ── 시스템 프롬프트 ───────────────────────────────────────────────────────────
+STORY_SYSTEM = """당신은 6~7세 아동을 위한 한국어 동화 작가입니다.
+주어진 기획서와 참고 동화를 바탕으로 동화 본문만 작성하세요. 기획 내용을 반복하거나 설명하지 마세요.
+
+[작성 규칙]
+- 대상 독자: 6~7세 한국 아동
+- 길이: 반드시 전체 글자 수는 700자 이상 1,000자 이하로 작성하세요.
+- 짧고 쉬운 단어를 사용하세요 (초등 1학년 수준).
+- 구조: 기승전결이 명확해야 함 (도입→갈등→반성→해결 순서)
+- 충분한 장면 묘사, 대화, 감정 표현을 넣어 이야기를 풍성하게 써주세요.
+- 갈등이 있더라도 반성·사과·화해 등 긍정적 결말로 마무리하세요. 이야기 속에서 교훈이 자연스럽게 드러나야 함 (직접 설교 금지)
+- 특정 성별·인종·직업을 고정관념화하지 마세요.
+- 폭력·갈등 묘사: 교훈을 위해 필요할 경우 허용하되, 반드시 반성·화해로 이어질 것
+- 등장 인물의 성별이 드러나지 않는 이름을 사용하세요 (예: 도담, 하늘, 솔이, 누리) (동물들이 주인공이라면 코코, 토토 등).
+- 공주, 왕자, 왕, 여왕, 아들, 딸, 남자아이, 여자아이는 절대 사용하지 마세요."""
+
+
+# ── Generator 클래스 ─────────────────────────────────────────────────────────
 class FairyTaleGenerator:
-    def __init__(
-        self,
-        model_name: str = "kakaocorp/kanana-nano-2.1b-instruct",
-        # model_name: str = "kakaocorp/kanana-1.5-8b-instruct-2505",  # 고품질 대안
-    ):
-        print(f"[Generator] 모델 로딩 중: {model_name}")
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+    """카나나 로컬 모델 기반 동화 본문 생성기."""
+
+    def __init__(self, model_id: str = DEFAULT_MODEL, device: Optional[str] = None):
+        self.model_id = model_id
+        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        logger.info(f"Generator 모델: {self.model_id} / 디바이스: {self.device}")
+        self._load_model()
+
+    def _load_model(self):
+        logger.info(f"Generator 모델 로딩 중: {self.model_id}")
+        self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
         self.model = AutoModelForCausalLM.from_pretrained(
-            model_name,
-            torch_dtype=torch.float16,
-            device_map="auto",
+            self.model_id,
+            torch_dtype=torch.float16 if self.device == "cuda" else torch.float32,
+            device_map="auto" if self.device == "cuda" else None,
         )
+        if self.device != "cuda":
+            self.model = self.model.to(self.device)
         self.model.eval()
-        print("[Generator] 모델 로딩 완료")
+        logger.info(f"Generator 모델 로딩 완료: {self.model_id}")
 
-    def generate(
-        self,
-        user_request: str,
-        max_new_tokens: int = 1024,
-        temperature: float = 0.8,
-        top_p: float = 0.95,
-        few_shot_example: str = "",
-    ) -> str:
-        """
-        동화를 생성합니다.
-        few_shot_example: 데이터셋 동화 일부 (길이·문체 가이드용)
-        """
-        # few-shot 예시가 있으면 시스템 프롬프트에 추가
-        system = SYSTEM_PROMPT
-        if few_shot_example:
-            system += f"""
-
-[참고 동화 예시 - 길이와 문체를 참고하세요]
-{few_shot_example}
----
-위 예시와 비슷한 길이와 문체로 아래 요청에 맞는 동화를 써주세요."""
-
+    def _chat(self, system: str, user: str, max_new_tokens: int = 768) -> str:
         messages = [
             {"role": "system", "content": system},
-            {"role": "user", "content": user_request},
+            {"role": "user", "content": user},
         ]
         input_ids = self.tokenizer.apply_chat_template(
             messages,
             add_generation_prompt=True,
             return_tensors="pt",
-        ).to(self.model.device)
-
-        attention_mask = (input_ids != self.tokenizer.pad_token_id).long()
+        ).to(self.device)
 
         with torch.no_grad():
             output_ids = self.model.generate(
                 input_ids,
-                attention_mask=attention_mask,
                 max_new_tokens=max_new_tokens,
-                temperature=temperature,
-                top_p=top_p,
                 do_sample=True,
+                temperature=0.8,
+                top_p=0.9,
+                repetition_penalty=1.1,
                 pad_token_id=self.tokenizer.eos_token_id,
             )
 
         generated = output_ids[0][input_ids.shape[-1]:]
-        text = self.tokenizer.decode(generated, skip_special_tokens=True)
-        text = self.honorify(text)
-        text = self.strip_meta(text)
-        return text.strip()
+        return self.tokenizer.decode(generated, skip_special_tokens=True).strip()
 
-    @staticmethod
-    def strip_meta(text: str) -> str:
+    def generate(self, plan: str, rewrite_hint: str = "", few_shot_examples: str = "") -> str:
         """
-        카나나가 동화 완성 후 덧붙이는 메타 텍스트를 제거합니다.
-        동화 본문 마무리 문장은 건드리지 않습니다.
+        Solar가 작성한 기획서(plan)를 받아 동화 본문을 생성한다.
+
+        Args:
+            plan              : Solar가 생성한 동화 기획
+            rewrite_hint      : 이전 평가 수정 지시사항. 빈 문자열이면 무시.
+            few_shot_examples : 데이터셋에서 가져온 참고 동화 텍스트 (퓨샷)
         """
-        cut_patterns = [
-            # "이 이야기는 ~교훈을 줍니다" 형태만 자름 (마무리 서술과 구분)
-            r'\n+이\s*이야기는\s*.{0,30}(교훈|배울\s*수\s*있)',
-            r'\n+이\s*이야기를\s*통해',
-            r'\n+이\s*동화는\s*(친구|아이|어린이|서로|장난감).{0,20}(교훈|알려|줍니다)',
-            r'\n+좋은\s*동화',
-            r'\n+아래는\s*.{0,20}(입니다|제안)',
-            r'\n+#{1,3}\s*(교훈|총\s*단어|Tip|moral)',
-            r'\n+\d+\.\s+[가-힣]',
-            r'\n+다음은\s*이\s*추가',
-        ]
-        result = text
-        for pattern in cut_patterns:
-            match = re.search(pattern, result, re.IGNORECASE)
-            if match:
-                result = result[:match.start()].rstrip()
+        few_shot_section = ""
+        if few_shot_examples:
+            few_shot_section = f"\n\n[참고 동화 — 아래 동화들의 문체·구조·길이를 참고하세요]\n{few_shot_examples}"
 
-        # "주인공인" 메타적 표현 제거
-        result = re.sub(r'주인공인\s*', '', result)
+        hint_section = ""
+        if rewrite_hint:
+            hint_section = f"\n\n[이전 평가 피드백 — 반드시 반영하세요]\n{rewrite_hint}"
 
-        return result
+        user_prompt = (
+            f"아래 기획서를 바탕으로 6~7세용 한국어 동화 본문을 작성하세요.\n\n"
+            f"[동화 기획서]\n{plan}"
+            f"{few_shot_section}"
+            f"{hint_section}\n\n"
+            f"지금 바로 동화 본문만 작성하세요. (600자 이상 1,000자 이하)"
+        )
 
-    def count_words(self, text: str) -> int:
-        """어절(공백 기준) 수를 반환합니다. 단어 수와 실용적으로 동일하게 취급합니다."""
-        return len(text.split())
-
-    def split_sentences(self, text: str) -> list[str]:
-        """동화 텍스트를 문장 단위로 분리합니다."""
-        sentences = re.split(r"(?<=[.!?])\s+|(?<=요\.)\s*\n|(?<=다\.)\s*\n", text)
-        return [s.strip() for s in sentences if s.strip()]
-
-    @staticmethod
-    def honorify(text: str) -> str:
-        """
-        서술문의 반말 어미를 높임말로 후처리합니다.
-        대사(따옴표 안)는 건드리지 않습니다.
-        """
-        quotes: list[str] = []
-
-        def protect_quote(m: re.Match) -> str:
-            quotes.append(m.group(0))
-            return f"__Q{len(quotes) - 1}__"
-
-        protected = re.sub(r'"[^"]*"', protect_quote, text)
-        protected = re.sub(r"'[^']*'", protect_quote, protected)
-
-        replacements = [
-            (r'(았|었)어([.!?])', r'\1어요\2'),
-            (r'([가-힣])어([.!?])', r'\1어요\2'),
-            (r'([가-힣])지([.!?])', r'\1지요\2'),
-            (r'(했|됐|났|갔|왔|봤|줬|뺐)다([.!?])', r'\1어요\2'),
-            (r'(았|었)어(\s*\n)', r'\1어요\2'),
-            (r'([가-힣])어(\s*\n)', r'\1어요\2'),
-        ]
-        for pattern, repl in replacements:
-            protected = re.sub(pattern, repl, protected)
-
-        for i, q in enumerate(quotes):
-            protected = protected.replace(f"__Q{i}__", q)
-        return protected
+        logger.info(f"카나나({self.model_id.split('/')[-1]}) — 동화 본문 생성 중...")
+        story = self._chat(system=STORY_SYSTEM, user=user_prompt)
+        char_count = len(story.replace(" ", ""))
+        logger.info(f"생성 완료 — 글자 수(공백 제외): {char_count}자")
+        return story
