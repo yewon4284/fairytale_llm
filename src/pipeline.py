@@ -14,22 +14,14 @@ class FairyTalePipeline:
 
     # src/pipeline.py
 
-    def run(self, raw_topic: str) -> dict:
-        """
-        전체 파이프라인을 실행합니다.
-        
-        Args:
-            raw_topic: 부모님이 입력한 원문 주제
-        """
-        print(f"\n{'='*50}")
-        print(f"사용자 원문 주제: {raw_topic}")
-        print(f"{'='*50}\n")
+    # src/pipeline.py
 
-        # [추가된 0단계] Solar Pro 3를 통한 입력 정보 구조화
-        # 부모님의 모호한 서술을 '캐릭터 속성'과 '동사 체인'으로 설계합니다.
-        print("[0단계] Solar Pro 3로 동화 설계도 구성 중...")
-        structured_guide = self.evaluator.get_structured_guide(raw_topic)
-        print(f"\n📌 생성된 동화 설계도:\n{structured_guide}\n")
+    def run(self, raw_topic: str) -> dict:
+        print(f"\n[0단계] 카나나 Nano로 동화 설계도 구성 중...")
+        
+        # [변경] self.evaluator 대신 self.generator를 사용합니다.
+        structured_guide = self.generator.get_structured_guide(raw_topic)
+        print(f"\n📌 생성된 동화 설계도 (Nano 작성):\n{structured_guide}\n")
 
         # ① 동화 초안 생성 (raw_topic 대신 structured_guide 전달)
         print("[1단계] 카나나 nano로 동화 초안 생성 중...")

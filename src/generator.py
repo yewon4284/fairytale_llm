@@ -33,6 +33,37 @@ class FairyTaleGenerator:
 
     # src/generator.py
 
+    def get_structured_guide(self, raw_topic: str) -> str:
+        """
+        [1단계] 카나나 Nano를 사용하여 주제를 구조화된 설계도로 만듭니다.
+        """
+        # 나노가 이해하기 쉽게 간단하고 명확한 지시를 줍니다.
+        struct_prompt = f"""당신은 동화의 뼈대를 만드는 설계자입니다. 
+사용자의 요청을 분석하여 등장인물과 사건 순서(동사 체인)를 짧게 요약하세요.
+
+[규칙]
+1. 인물 성별을 언급하지 마세요. (예: 활발한 아이, 차분한 친구)
+2. 부모님이나 외부 개입 없이 아이들이 스스로 해결하는 구조로 만드세요.
+3. 사건은 (행동1) -> (행동2) -> (해결) 순서로 아주 짧게 쓰세요.
+
+주제: {raw_topic}
+
+설계도:"""
+
+        inputs = self.tokenizer(struct_prompt, return_tensors="pt").to(self.device)
+        
+        with torch.no_grad():
+            output = self.model.generate(
+                **inputs,
+                max_new_tokens=200, # 설계도는 짧아야 하므로 제한
+                temperature=0.3,    # 논리적이어야 하므로 낮게 설정
+                do_sample=True,
+                pad_token_id=self.tokenizer.eos_token_id
+            )
+        
+        guide = self.tokenizer.decode(output[0][inputs["input_ids"].shape[-1]:], skip_special_tokens=True)
+        return guide.strip()
+
     def generate(self, structured_guide: str, max_new_tokens: int = 1024) -> str:
         """
         솔라가 작성한 [동화 설계도]를 바탕으로 동화 본문을 생성합니다.
