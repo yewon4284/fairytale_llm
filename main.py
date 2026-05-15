@@ -4,7 +4,7 @@ import json
 if __name__ == "__main__":
     pipeline = FairyTalePipeline()
 
-    topic = "욕심쟁이 곰과 나눔을 배우는 토끼"
+    topic = """우리 아들이 유치원에서 장난감을 서로 가지고 놀겠다고 친구랑 싸웠대. 이 상황에 도움될만한 동화를 써줘"""
     result = pipeline.run(topic)
 
     print(f"\n{'='*50}")
