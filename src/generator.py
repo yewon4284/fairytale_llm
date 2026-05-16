@@ -1,129 +1,230 @@
+"""
+generator.py
+카나나 로컬 모델을 이용해 동화 본문을 생성한다.
+
+[지원 모델 — 모델 ID 상수로 관리]
+  KANANA_NANO  : kakaocorp/kanana-nano-2.1b-instruct
+                 세이프가드(8B)와 합산 ~10B → A100 80GB 여유
+  KANANA_15_8B : kakaocorp/kanana-1.5-8b-instruct-2505  ← 현재 기본값
+                 세이프가드와 합산 ~36GB, A100 80GB 단일 GPU 운용 가능
+
+[역할 분리 원칙]
+  기획(Plan)  → Solar API (evaluator.py)
+  동화 생성   → 카나나 (이 파일)
+  1차 평가    → 카나나 세이프가드 8B (safeguard.py)
+  2차 평가    → Solar API (evaluator.py)
+
+[동화 길이 기준]
+  6~7세 아동 그림책: 600~1,000자 (공백 제외)
+  근거: 국립어린이청소년도서관 유아 그림책 기준(2019),
+        Valentini et al.(2023) AoA<=6 어휘 연구 200~400 어절 권장
+"""
+
+import re
+import logging
+from typing import Optional
+
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoTokenizer, AutoModelForCausalLM
 
-MODEL_NAME = "kakaocorp/kanana-nano-2.1b-base"
+logger = logging.getLogger(__name__)
 
+
+# ── 모델 ID 상수 ──────────────────────────────────────────────────────────────
+KANANA_NANO  = "kakaocorp/kanana-nano-2.1b-instruct"           # 2.1B, 기본값
+KANANA_15_8B = "kakaocorp/kanana-1.5-8b-instruct-2505"         # 8B,  서버 실험용
+
+DEFAULT_MODEL = KANANA_NANO
+
+
+# ── 편향 유발 금지어 ──────────────────────────────────────────────────────────
+BIASED_WORDS = {
+    "아들", "딸", "공주", "왕자", "왕", "여왕",
+    "남자아이", "여자아이", "남자", "여자",
+    "오빠", "언니", "형", "누나",
+    "흑인", "백인", "동양인", "서양인",
+    "한국인", "미국인", "중국인", "일본인",
+}
+
+BIAS_PATTERN = re.compile(
+    r"(?<![가-힣a-zA-Z])"
+    + "(" + "|".join(re.escape(w) for w in sorted(BIASED_WORDS, key=len, reverse=True)) + ")"
+    + r"(?![가-힣a-zA-Z])",
+    re.UNICODE,
+)
+
+
+def check_bias(user_input: str) -> Optional[str]:
+    """편향 단어가 포함되면 해당 단어를 반환한다. 없으면 None."""
+    m = BIAS_PATTERN.search(user_input)
+    return m.group() if m else None
+
+
+def _trim_to_last_sentence(text: str) -> str:
+    """토큰 한도로 문장이 중간에 잘린 경우 마지막 완성 문장까지만 남긴다."""
+    stripped = text.strip()
+    if not stripped or stripped[-1] in ".!?":
+        return stripped
+    m = re.search(r"(.*[.!?])", stripped, re.DOTALL)
+    if m:
+        trimmed = m.group(1).strip()
+        logger.warning(f"문장 끝이 잘림 감지 → 후처리로 트리밍 적용 (원본 {len(stripped)}자 → {len(trimmed)}자)")
+        return trimmed
+    return stripped
+
+
+# ── 기획 프롬프트 ────────────────────────────────────────────────────────────
+PLAN_SYSTEM = """당신은 아동 교육 전문가이자 동화 작가입니다.
+사용자가 설명한 상황을 바탕으로, 6~7세 아동에게 교훈을 전달하는 동화를 기획하세요.
+
+[전달 방식 옵션]
+- 역지사지: 주인공이 피해자 입장을 직접 경험하며 깨닫는 방식
+- 제3자 조언: 현명한 조력자(동물, 나무, 친구 등)가 주인공에게 가르침을 주는 방식
+- 결과 체험: 잘못된 행동의 결과를 주인공이 직접 겪으며 반성하는 방식
+- 감정 공감: 상대방의 감정을 느끼고 이해하는 과정을 통해 변화하는 방식
+
+[제약 사항]
+- 주인공 이름은 성별이 드러나지 않는 이름으로 설정 (예: 도담, 하늘, 솔이, 누리, 봄이)
+- 공주/왕자/왕/여왕/아들/딸/남자아이/여자아이 사용 금지
+- 특정 인종·직업·지역 고정관념 없이 설정
+
+[출력 형식] 반드시 아래 형식 그대로 출력하세요:
+[핵심 교훈] <한 문장으로 명확하게>
+[전달 방식] <위 4가지 중 선택한 방식 + 이 방식을 선택한 이유 한 문장>
+[주인공 설정] <이름(성별 중립) + 처한 상황 한 문장>
+[조력자/계기] <변화를 이끄는 존재 또는 사건 한 문장>
+[결말 방향] <어떤 깨달음이나 변화로 마무리되는지 한 문장>
+[동화 분위기] <따뜻한 / 유쾌한 / 진지한 / 모험적인 중 선택>"""
+
+PLAN_USER_TEMPLATE = "다음 상황에 맞는 6~7세용 동화를 기획해 주세요:\n\n{user_request}"
+
+
+# ── 시스템 프롬프트 ───────────────────────────────────────────────────────────
+STORY_SYSTEM = """당신은 6~7세 아동을 위한 한국어 동화 작가입니다.
+주어진 기획서와 참고 동화를 바탕으로 동화 본문만 작성하세요. 기획 내용을 반복하거나 설명하지 마세요.
+
+[작성 규칙]
+- 대상 독자: 6~7세 한국 아동
+- 길이: 반드시 전체 글자 수는 700자 이상 1,000자 이하로 작성하세요.
+- 짧고 쉬운 단어를 사용하세요 (초등 1학년 수준).
+- 구조: 기승전결이 명확해야 함 (도입→갈등→반성→해결 순서)
+- 충분한 장면 묘사, 대화, 감정 표현을 넣어 이야기를 풍성하게 써주세요.
+- 갈등이 있더라도 반성·사과·화해 등 긍정적 결말로 마무리하세요. 이야기 속에서 교훈이 자연스럽게 드러나야 함 (직접 설교 금지)
+- 특정 성별·인종·직업을 고정관념화하지 마세요.
+- 폭력·갈등 묘사: 교훈을 위해 필요할 경우 허용하되, 반드시 반성·화해로 이어질 것
+- 등장 인물의 성별이 드러나지 않는 이름을 사용하세요 (예: 도담, 하늘, 솔이, 누리) (동물들이 주인공이라면 코코, 토토 등).
+- 공주, 왕자, 왕, 여왕, 아들, 딸, 남자아이, 여자아이는 절대 사용하지 마세요."""
+
+
+# ── Generator 클래스 ─────────────────────────────────────────────────────────
 class FairyTaleGenerator:
-    def __init__(self):
-        # 1. 장치 설정 (맥은 mps, 아니면 cuda, 그것도 아니면 cpu)
-        if torch.backends.mps.is_available():
-            self.device = torch.device("mps")
+    """카나나 로컬 모델 기반 동화 본문 생성기."""
+
+    def __init__(self, model_id: str = DEFAULT_MODEL, device: Optional[str] = None):
+        self.model_id = model_id
+        if device:
+            self.device = device
+        elif torch.backends.mps.is_available():
+            self.device = "mps"
         elif torch.cuda.is_available():
-            self.device = torch.device("cuda")
+            self.device = "cuda"
         else:
-            self.device = torch.device("cpu")
-        
-        print(f"현재 사용 중인 디바이스: {self.device}")
-        print("카나나 nano 모델 로딩 중...")
+            self.device = "cpu"
+        logger.info(f"Generator 모델: {self.model_id} / 디바이스: {self.device}")
+        self._load_model()
 
-        # 2. 모델 로딩 (device 설정을 self.device로 변경)
+    def _load_model(self):
+        logger.info(f"Generator 모델 로딩 중: {self.model_id}")
+        self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
         self.model = AutoModelForCausalLM.from_pretrained(
-            MODEL_NAME,
-            torch_dtype=torch.bfloat16,
-            trust_remote_code=True,
-        ).to(self.device)
-
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            MODEL_NAME,
-            padding_side="left"
+            self.model_id,
+            torch_dtype=torch.float16 if self.device in ("cuda", "mps") else torch.float32,
+            device_map="auto" if self.device == "cuda" else None,
         )
-        self.tokenizer.pad_token = self.tokenizer.eos_token
+        if self.device != "cuda":
+            self.model = self.model.to(self.device)
         self.model.eval()
-        print("카나나 nano 모델 로딩 완료!")
+        logger.info(f"Generator 모델 로딩 완료: {self.model_id}")
 
-    # src/generator.py
+    def _fallback_to_cpu(self):
+        logger.warning("메모리 부족 → CPU로 전환합니다.")
+        self.device = "cpu"
+        self.model = self.model.to("cpu")
 
-    def get_structured_guide(self, raw_topic: str) -> str:
+    def _chat(self, system: str, user: str, max_new_tokens: int = 768) -> str:
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ]
+
+        def _run():
+            input_ids = self.tokenizer.apply_chat_template(
+                messages,
+                add_generation_prompt=True,
+                return_tensors="pt",
+            ).to(self.device)
+            attention_mask = torch.ones_like(input_ids)
+            with torch.no_grad():
+                output_ids = self.model.generate(
+                    input_ids,
+                    attention_mask=attention_mask,
+                    max_new_tokens=max_new_tokens,
+                    do_sample=True,
+                    temperature=0.8,
+                    top_p=0.9,
+                    repetition_penalty=1.1,
+                    pad_token_id=self.tokenizer.eos_token_id,
+                )
+            generated = output_ids[0][input_ids.shape[-1]:]
+            return self.tokenizer.decode(generated, skip_special_tokens=True).strip()
+
+        try:
+            return _run()
+        except RuntimeError as e:
+            if "out of memory" in str(e).lower():
+                self._fallback_to_cpu()
+                return _run()
+            raise
+
+    def plan(self, user_request: str) -> str:
+        """사용자 요청을 받아 동화 기획서를 생성한다."""
+        logger.info(f"카나나({self.model_id.split('/')[-1]}) — 동화 기획 생성 중...")
+        plan_text = self._chat(
+            system=PLAN_SYSTEM,
+            user=PLAN_USER_TEMPLATE.format(user_request=user_request),
+            max_new_tokens=512,
+        )
+        logger.info("카나나 기획 완료")
+        return plan_text
+
+    def generate(self, plan: str, rewrite_hint: str = "", few_shot_examples: str = "") -> str:
         """
-        [1단계] 카나나 Nano를 사용하여 주제를 구조화된 설계도로 만듭니다.
+        Solar가 작성한 기획서(plan)를 받아 동화 본문을 생성한다.
+
+        Args:
+            plan              : Solar가 생성한 동화 기획
+            rewrite_hint      : 이전 평가 수정 지시사항. 빈 문자열이면 무시.
+            few_shot_examples : 데이터셋에서 가져온 참고 동화 텍스트 (퓨샷)
         """
-        # 나노가 이해하기 쉽게 간단하고 명확한 지시를 줍니다.
-        struct_prompt = f"""당신은 동화의 뼈대를 만드는 설계자입니다. 
-사용자의 요청을 분석하여 등장인물과 사건 순서(동사 체인)를 짧게 요약하세요.
+        few_shot_section = ""
+        if few_shot_examples:
+            few_shot_section = f"\n\n[참고 동화 — 아래 동화들의 문체·구조·길이를 참고하세요]\n{few_shot_examples}"
 
-[규칙]
-1. 인물 성별을 언급하지 마세요. (예: 활발한 아이, 차분한 친구)
-2. 부모님이나 외부 개입 없이 아이들이 스스로 해결하는 구조로 만드세요.
-3. 사건은 (행동1) -> (행동2) -> (해결) 순서로 아주 짧게 쓰세요.
+        hint_section = ""
+        if rewrite_hint:
+            hint_section = f"\n\n[이전 평가 피드백 — 반드시 반영하세요]\n{rewrite_hint}"
 
-주제: {raw_topic}
+        user_prompt = (
+            f"아래 기획서를 바탕으로 6~7세용 한국어 동화 본문을 작성하세요.\n\n"
+            f"[동화 기획서]\n{plan}"
+            f"{few_shot_section}"
+            f"{hint_section}\n\n"
+            f"지금 바로 동화 본문만 작성하세요. (600자 이상 1,000자 이하)"
+        )
 
-설계도:"""
-
-        inputs = self.tokenizer(struct_prompt, return_tensors="pt").to(self.device)
-        
-        with torch.no_grad():
-            output = self.model.generate(
-                **inputs,
-                max_new_tokens=200, # 설계도는 짧아야 하므로 제한
-                temperature=0.3,    # 논리적이어야 하므로 낮게 설정
-                do_sample=True,
-                pad_token_id=self.tokenizer.eos_token_id
-            )
-        
-        guide = self.tokenizer.decode(output[0][inputs["input_ids"].shape[-1]:], skip_special_tokens=True)
-        return guide.strip()
-
-    def generate(self, structured_guide: str, max_new_tokens: int = 1024) -> str:
-        """
-        솔라가 작성한 [동화 설계도]를 바탕으로 동화 본문을 생성합니다.
-        (max_new_tokens를 1024로 늘려 충분한 분량을 확보합니다.)
-        """
-        
-        # [수정 포인트] 프롬프트를 설계도 중심(Constrained Generation)으로 변경
-        prompt = f"""당신은 6~7세 아동을 위한 전문 동화 작가입니다. 
-아래 [동화 설계도]를 바탕으로, 다음 규칙을 엄격히 지쳐 오직 **아이들이 듣는 동화 본문**만 작성하세요.
-
-[동화 설계도]
-{structured_guide}
-
-[집필 절대 규칙 - 위반 시 감점]
-1. **설명 금지**: "이 동화는~", "[동화 본문]", "[동화 해설]" 같은 제목이나 설명은 절대 쓰지 마세요.
-2. **즉시 시작**: 첫 문장은 반드시 주인공의 이름이나 "옛날에~", "어느 날~" 같은 이야기의 시작으로 시작하세요.
-3. **해설 금지**: 이야기 끝에 교훈이나 해설을 덧붙이지 마세요. 이야기가 끝나면 그대로 종료하세요.
-4. **언어**: 반드시 한국어(Korean)로만 작성하세요.
-5. **분량**: 아이들이 지루하지 않게 10~15문장 내외로 풍성하게 묘사하세요.
-6. **성별 중립성**: 인물에게 '남자아이', '여자아이' 혹은 성별을 암시하는 수식어(예: 씩씩한 소년, 얌전한 소녀)를 절대 사용하지 마세요. 오직 이름(루카, 카나)이나 '아이들', '친구'로만 지칭하세요.
-7. **사건의 단방향 전개**: 이야기는 '기-승-전-결'의 순서로 단 한 번만 진행됩니다. 이미 일어난 사건(사과, 화해 등)을 뒤에서 반복하지 마세요.
-8. **묘사의 경제성**: "이 동화는~" 같은 설명이나 마지막의 해설을 모두 삭제하고 오직 이야기 본문만 출력하세요.
-9. **감정의 배치**: 미안함이나 두근거림 같은 감정 묘사는 사건(갈등)이 일어난 직후에 배치하여 인과관계를 명확히 하세요.
-
-동화 시작:"""
-
-        # 1. 토크나이징 및 장치 전송
-        inputs = self.tokenizer(
-            prompt,
-            return_tensors="pt",
-            padding=True,
-            truncation=True,
-        ).to(self.device)
-
-        input_ids = inputs["input_ids"]
-        attention_mask = inputs["attention_mask"]
-
-        # 2. 모델 생성 설정 (안정적인 서사를 위해 temperature 조절)
-        with torch.no_grad():
-            output = self.model.generate(
-                input_ids,
-                attention_mask=attention_mask,
-                pad_token_id=self.tokenizer.eos_token_id,
-                max_new_tokens=max_new_tokens,
-                do_sample=True,
-                temperature=0.7,      # 약간의 창의성을 주되
-                top_p=0.9,            # 논리적 일관성을 위해 top_p 조절
-                repetition_penalty=1.1, # 문맥 반복 방지
-            )
-
-        generated_ids = output[0][input_ids.shape[-1]:]
-        return self.tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
-
-
-# 단독 테스트용
-if __name__ == "__main__":
-    gen = FairyTaleGenerator()
-    topic = "유괴 예방에 도움이 되는 동화"
-    result = gen.generate(topic)
-    print("=" * 50)
-    print("생성된 동화:")
-    print("=" * 50)
-    print(result)
+        logger.info(f"카나나({self.model_id.split('/')[-1]}) — 동화 본문 생성 중...")
+        story = self._chat(system=STORY_SYSTEM, user=user_prompt, max_new_tokens=1536)
+        story = _trim_to_last_sentence(story)
+        char_count = len(story.replace(" ", ""))
+        logger.info(f"생성 완료 — 글자 수(공백 제외): {char_count}자")
+        return story

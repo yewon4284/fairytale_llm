@@ -1,141 +1,136 @@
+"""
+safeguard.py
+카나나 세이프가드 8B를 이용한 1차 문장 단위 유해성 분류.
+
+동작 방식:
+- 동화를 문장 단위로 분리한다.
+- 각 문장에 대해 safeguard를 호출하여 SAFE / UNSAFE-Sx 를 판정한다.
+- UNSAFE 문장은 카테고리와 함께 "요주의 문장"으로 태깅하여 반환한다.
+- 1차 평가의 역할은 최종 판단이 아닌 의심 문장 탐지 + 카테고리 태깅에 한정된다.
+
+카테고리:
+  S1 증오, S2 괴롭힘, S3 성적콘텐츠, S4 범죄,
+  S5 아동성착취, S6 자살·자해, S7 잘못된정보
+"""
+
+import re
+import logging
+from typing import List, Tuple, Dict, Optional
+
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
-MODEL_NAME = "kakaocorp/kanana-safeguard-8b"
+logger = logging.getLogger(__name__)
 
-# 안전 카테고리 정의
-UNSAFE_CATEGORIES = {
-    "S1": "증오 (차별적 발화)",
+# ── 상수 ──────────────────────────────────────────────────────────────────────
+SAFEGUARD_MODEL_ID = "kakaocorp/kanana-safeguard-8b"
+
+CATEGORY_DESC: Dict[str, str] = {
+    "S1": "증오(차별·혐오)",
     "S2": "괴롭힘",
     "S3": "성적 콘텐츠",
-    "S4": "범죄",
+    "S4": "범죄·폭력",
     "S5": "아동 성착취",
     "S6": "자살·자해",
     "S7": "잘못된 정보",
 }
 
-class SafeguardEvaluator:
-    def __init__(self):
-        print("카나나 세이프가드 모델 로딩 중...")
+SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?요])\s+")
+
+SAFEGUARD_PROMPT_TEMPLATE = (
+    "<start_of_turn>user\n{text}<end_of_turn>\n<start_of_turn>model\n"
+)
+
+
+class KananaSafeguard:
+    """카나나 세이프가드 8B 래퍼"""
+
+    def __init__(self, device: Optional[str] = None):
+        if device:
+            self.device = device
+        elif torch.backends.mps.is_available():
+            self.device = "mps"
+        elif torch.cuda.is_available():
+            self.device = "cuda"
+        else:
+            self.device = "cpu"
+        logger.info(f"Safeguard 디바이스: {self.device}")
+        self._load_model()
+
+    def _load_model(self):
+        logger.info(f"Safeguard 모델 로딩: {SAFEGUARD_MODEL_ID}")
+        self.tokenizer = AutoTokenizer.from_pretrained(SAFEGUARD_MODEL_ID)
         self.model = AutoModelForCausalLM.from_pretrained(
-            MODEL_NAME,
-            torch_dtype=torch.bfloat16,
-            device_map="auto",
-        ).eval()
-        self.tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-        print("카나나 세이프가드 모델 로딩 완료!")
+            SAFEGUARD_MODEL_ID,
+            torch_dtype=torch.float16 if self.device in ("cuda", "mps") else torch.float32,
+            device_map="auto" if self.device == "cuda" else None,
+        )
+        if self.device != "cuda":
+            self.model = self.model.to(self.device)
+        self.model.eval()
+        logger.info("Safeguard 모델 로딩 완료")
 
-    def classify_sentence(self, sentence: str) -> dict:
+    def _fallback_to_cpu(self):
+        logger.warning("Safeguard 메모리 부족 → CPU로 전환합니다.")
+        self.device = "cpu"
+        self.model = self.model.to("cpu")
+
+    def classify_sentence(self, sentence: str) -> str:
         """
-        단일 문장을 분류합니다.
-        
-        Args:
-            sentence: 평가할 문장
-            
+        단일 문장을 분류한다.
+        Returns: '<SAFE>' 또는 '<UNSAFE-Sx>'
+        """
+        def _run():
+            prompt = SAFEGUARD_PROMPT_TEMPLATE.format(text=sentence)
+            inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
+            with torch.no_grad():
+                output = self.model.generate(
+                    **inputs,
+                    max_new_tokens=10,
+                    do_sample=False,
+                    pad_token_id=self.tokenizer.eos_token_id,
+                )
+            generated = output[0][inputs["input_ids"].shape[-1]:]
+            return self.tokenizer.decode(generated, skip_special_tokens=True).strip()
+
+        try:
+            return _run()
+        except RuntimeError as e:
+            if "out of memory" in str(e).lower():
+                self._fallback_to_cpu()
+                return _run()
+            raise
+
+    def evaluate_story(self, story: str) -> Tuple[List[str], List[Dict]]:
+        """
+        동화 전체를 문장 단위로 평가한다.
+
         Returns:
-            {
-                "sentence": 원본 문장,
-                "label": "SAFE" 또는 "UNSAFE-Sx",
-                "is_unsafe": bool,
-                "category": 카테고리 코드 (UNSAFE일 경우),
-                "category_name": 카테고리 이름 (UNSAFE일 경우)
-            }
+            sentences : 분리된 문장 리스트
+            flagged   : 요주의 문장 정보 리스트
+                        [{"idx": int, "sentence": str, "category": str, "desc": str}]
         """
-        messages = [
-            {"role": "user", "content": sentence},
-            {"role": "assistant", "content": ""}
-        ]
+        sentences = [s.strip() for s in SENTENCE_SPLIT_RE.split(story) if s.strip()]
+        flagged: List[Dict] = []
 
-        input_ids = self.tokenizer.apply_chat_template(
-            messages,
-            tokenize=True,
-            return_tensors="pt"
-        ).to(self.model.device)
+        logger.info(f"1차 평가 시작 — 총 {len(sentences)}개 문장")
 
-        attention_mask = (input_ids != self.tokenizer.pad_token_id).long()
-
-        with torch.no_grad():
-            output_ids = self.model.generate(
-                input_ids,
-                attention_mask=attention_mask,
-                max_new_tokens=1,
-                pad_token_id=self.tokenizer.eos_token_id
-            )
-
-        gen_idx = input_ids.shape[-1]
-        label = self.tokenizer.decode(output_ids[0][gen_idx], skip_special_tokens=True)
-
-        is_unsafe = label.startswith("<UNSAFE")
-        category = None
-        category_name = None
-
-        if is_unsafe:
-            # "<UNSAFE-S4>" → "S4" 추출
-            category = label.replace("<UNSAFE-", "").replace(">", "").strip()
-            category_name = UNSAFE_CATEGORIES.get(category, "알 수 없음")
-
-        return {
-            "sentence": sentence,
-            "label": label,
-            "is_unsafe": is_unsafe,
-            "category": category,
-            "category_name": category_name,
-        }
-
-    def evaluate_story(self, story: str) -> dict:
-        """
-        동화 전체를 문장 단위로 분리하여 1차 평가합니다.
-        
-        Args:
-            story: 평가할 동화 전체 텍스트
-            
-        Returns:
-            {
-                "sentences": 전체 문장 결과 리스트,
-                "flagged_sentences": 요주의 문장 리스트,
-                "is_all_safe": 전체 안전 여부
-            }
-        """
-        # 문장 분리 (마침표, 느낌표, 물음표 기준)
-        import re
-        sentences = re.split(r'(?<=[.!?])\s+', story.strip())
-        sentences = [s.strip() for s in sentences if s.strip()]
-
-        results = []
-        flagged = []
-
-        for sent in sentences:
+        for idx, sent in enumerate(sentences):
             result = self.classify_sentence(sent)
-            results.append(result)
-            if result["is_unsafe"]:
-                flagged.append(result)
-                print(f"  ⚠️  요주의: [{result['category']}] {sent}")
-            else:
-                print(f"  ✅ 안전: {sent[:30]}...")
+            logger.debug(f"  [{idx+1}] {result} | {sent[:40]}...")
 
-        return {
-            "sentences": results,
-            "flagged_sentences": flagged,
-            "is_all_safe": len(flagged) == 0,
-        }
+            if result.startswith("<UNSAFE"):
+                category = result.strip("<>").replace("UNSAFE-", "")
+                desc = CATEGORY_DESC.get(category, "기타")
+                flagged.append({
+                    "idx": idx,
+                    "sentence": sent,
+                    "category": category,
+                    "desc": desc,
+                })
+                logger.info(f"  ⚠ 요주의: [{idx+1}] {category}({desc}) — {sent[:50]}")
 
-
-# 단독 테스트용
-if __name__ == "__main__":
-    sg = SafeguardEvaluator()
-
-    test_story = """
-    토끼와 곰은 숲속 친구였어요.
-    어느 날 곰이 토끼의 당근을 몰래 훔쳐 먹었어요.
-    토끼는 매우 슬펐지만 곰에게 화를 내지 않고 왜 그랬는지 물어보았어요.
-    곰은 배가 너무 고팠다고 사실대로 말했어요.
-    토끼는 곰을 용서하고 함께 당근을 나눠 먹었어요.
-    그 후로 둘은 더 좋은 친구가 되었답니다.
-    """
-
-    print("=" * 50)
-    print("1차 평가 결과:")
-    print("=" * 50)
-    result = sg.evaluate_story(test_story)
-    print(f"\n요주의 문장 수: {len(result['flagged_sentences'])}")
-    print(f"전체 안전 여부: {result['is_all_safe']}")
+        logger.info(
+            f"1차 평가 완료 — 요주의 문장 {len(flagged)}개 / 전체 {len(sentences)}개"
+        )
+        return sentences, flagged
