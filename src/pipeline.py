@@ -31,7 +31,7 @@ from src.evaluator import SolarEvaluator
 load_dotenv()
 logger = logging.getLogger(__name__)
 
-MAX_ATTEMPTS = 10
+MAX_ATTEMPTS = 8
 
 
 # ── 재작성 모드 ──────────────────────────────────────────────────────────────
