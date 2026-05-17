@@ -55,7 +55,7 @@ from src.evaluator import SolarEvaluator
 load_dotenv()
 logger = logging.getLogger(__name__)
 
-MAX_ATTEMPTS = 3 #재작성 횟수
+MAX_ATTEMPTS = 4
 
 
 # ── 재작성 모드 ──────────────────────────────────────────────────────────────
@@ -100,6 +100,7 @@ class PipelineResult:
     final_plan: str
     passed: bool
     total_attempts: int
+    best_attempt: int = 1
     attempts: List[AttemptRecord] = field(default_factory=list)
 
 
@@ -227,7 +228,24 @@ class FairyTalePipeline:
                     # MODE B: 이전 동화를 그대로 보존, Solar가 다음 루프에서 직접 수정
                     print(f"\n🔄 [MODE B] Solar 직접 수정 시작 (시도 {attempt+1})")
             else:
-                print(f"\n⚠ 최대 시도 횟수({MAX_ATTEMPTS}회) 초과. 마지막 동화를 최종 출력합니다.")
+                print(f"\n⚠ 최대 시도 횟수({MAX_ATTEMPTS}회) 초과.")
+
+        # ── 최고 점수 동화 선택 ───────────────────────────────────────────────
+        # 합격한 시도가 있으면 첫 번째 합격본, 없으면 평균 점수가 가장 높은 시도 선택
+        best_record = max(
+            records,
+            key=lambda r: (
+                r.passed,  # 합격 여부 우선
+                r.eval_result.get("average_score", 0),  # 그 다음 점수
+            )
+        )
+        final_story = best_record.story
+        best_attempt = best_record.attempt
+
+        if best_attempt != records[-1].attempt:
+            print(f"\n💡 시도 {best_attempt}의 동화가 최고 점수 "
+                  f"({best_record.eval_result.get('average_score', 0):.2f}점)로 선택됨 "
+                  f"(마지막 시도 {records[-1].attempt}번 대신)")
 
         return PipelineResult(
             user_request=user_request,
@@ -238,6 +256,7 @@ class FairyTalePipeline:
             passed=passed,
             total_attempts=len(records),
             attempts=records,
+            best_attempt=best_attempt,
         )
 
 
@@ -274,6 +293,7 @@ def print_final_result(result: PipelineResult):
     print(f"  재작성 모드: {result.rewrite_mode}")
     print(f"  Generator:  {result.generator_model.split('/')[-1]}")
     print(f"  총 시도:    {result.total_attempts}회")
+    print(f"  최종 선택:  시도 {result.best_attempt}번 (최고 점수)")
     print("\n🧩 [최종 동화 기획]")
     print(result.final_plan)
     print("\n📖 [최종 동화]")
@@ -287,6 +307,7 @@ def print_final_result(result: PipelineResult):
         for rec in result.attempts:
             avg = rec.eval_result.get("average_score", "-")
             status = "✅ PASS" if rec.passed else "❌ FAIL"
-            print(f"  시도 {rec.attempt} ({rec.generator_model}): 평균 {avg}점 → {status}")
+            best_mark = " ⭐ 최종 선택" if rec.attempt == result.best_attempt else ""
+            print(f"  시도 {rec.attempt} ({rec.generator_model}): 평균 {avg}점 → {status}{best_mark}")
 
     print("=" * 70)

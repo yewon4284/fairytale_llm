@@ -9,3 +9,4 @@ data/
 *.bin
 *.pt
 *.pth
+test_data/
