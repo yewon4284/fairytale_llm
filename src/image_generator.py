@@ -120,6 +120,7 @@ class FairyTaleImageGenerator:
                 logger.info(f"저장 완료: {save_path}")
                 paths.append(save_path)
                 print(f"      ✅ 저장: {save_path}")
+                print(f"      🔗 URL: {poll_url}")
             except requests.HTTPError as e:
                 logger.error(f"Pollinations.ai 오류 ({e.response.status_code}): {e}")
                 print(f"      ⚠ 이미지 생성 실패: {e}")
