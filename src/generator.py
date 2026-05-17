@@ -2,20 +2,21 @@
 generator.py
 카나나 로컬 모델을 이용해 동화 본문을 생성한다.
 
-[지원 모델]
-  KANANA_NANO  : kakaocorp/kanana-nano-2.1b-instruct   (2.1B, 경량/비교용)
-  KANANA_15_8B : kakaocorp/kanana-1.5-8b-instruct-2505 (8B, 현재 기본값)
+[지원 모델 — 모델 ID 상수로 관리]
+  KANANA_NANO  : kakaocorp/kanana-nano-2.1b-instruct
+                 세이프가드(8B)와 합산 ~10B → A100 80GB 여유
+  KANANA_15_8B : kakaocorp/kanana-1.5-8b-instruct-2505  ← 현재 기본값
+                 세이프가드와 합산 ~36GB, A100 80GB 단일 GPU 운용 가능
 
 [역할 분리 원칙]
-  기획(Plan)  → Solar Pro  (evaluator.py)
-  동화 생성   → 카나나 1.5 8B (이 파일)
+  기획(Plan)  → Solar API (evaluator.py)
+  동화 생성   → 카나나 (이 파일)
   1차 평가    → 카나나 세이프가드 8B (safeguard.py)
-  2차 평가    → Solar Pro (evaluator.py)
+  2차 평가    → Solar API (evaluator.py)
 
 [동화 길이 기준]
-  6~7세 아동 그림책: 600~1,000자 (공백 제외)
-  근거: 국립어린이청소년도서관 유아 그림책 기준(2019),
-        Valentini et al.(2023) AoA<=6 어휘 연구 200~400 어절 권장
+  6~7세 아동 그림책: 700~1,800자 (공백 제외)
+  근거: 데이터셋 385편 분석 결과 (의사소통 중앙값 1,669자, 25th percentile 1,294자)
 """
 
 import re
@@ -29,15 +30,13 @@ logger = logging.getLogger(__name__)
 
 
 # ── 모델 ID 상수 ──────────────────────────────────────────────────────────────
-KANANA_NANO  = "kakaocorp/kanana-nano-2.1b-instruct"
-KANANA_15_8B = "kakaocorp/kanana-1.5-8b-instruct-2505"
+KANANA_NANO  = "kakaocorp/kanana-nano-2.1b-instruct"           # 2.1B, 비교 실험용
+KANANA_15_8B = "kakaocorp/kanana-1.5-8b-instruct-2505"         # 8B,  현재 기본값
 
-DEFAULT_MODEL = KANANA_15_8B
+DEFAULT_MODEL = KANANA_NANO
 
 
 # ── 편향 유발 금지어 ──────────────────────────────────────────────────────────
-# 성별·인종·가족관계처럼 LLM 편향을 유발하는 단어를 입력 단계에서 차단한다.
-# 단어 경계 체크로 "형광등", "오빠상" 등 합성어는 통과.
 BIASED_WORDS = {
     "아들", "딸", "공주", "왕자", "왕", "여왕",
     "남자아이", "여자아이", "남자", "여자",
@@ -63,66 +62,30 @@ def check_bias(user_input: str) -> Optional[str]:
 def _trim_to_last_sentence(text: str) -> str:
     """토큰 한도로 문장이 중간에 잘린 경우 마지막 완성 문장까지만 남긴다."""
     stripped = text.strip()
-    if not stripped:
+    if not stripped or stripped[-1] in ".!?":
         return stripped
-    # 한국어 문장 종결 부호: . ! ? 및 요/다/죠 등의 어미로 끝나는 경우 포함
-    if stripped[-1] in ".!?":
-        return stripped
-    # 마지막 완성 문장 탐색
     m = re.search(r"(.*[.!?])", stripped, re.DOTALL)
     if m:
         trimmed = m.group(1).strip()
-        logger.warning(
-            f"문장 끝 잘림 감지 → 트리밍 적용 (원본 {len(stripped)}자 → {len(trimmed)}자)"
-        )
+        logger.warning(f"문장 끝 잘림 감지 → 트리밍 적용 ({len(stripped)}자 → {len(trimmed)}자)")
         return trimmed
     return stripped
 
 
-# ── 동화 기획 프롬프트 ───────────────────────────────────────────────────────
-PLAN_SYSTEM = """당신은 아동 교육 전문가이자 동화 작가입니다.
-사용자가 설명한 상황을 바탕으로, 6~7세 아동에게 교훈을 전달하는 동화를 기획하세요.
-
-[전달 방식 옵션]
-- 역지사지: 주인공이 피해자 입장을 직접 경험하며 깨닫는 방식
-- 제3자 조언: 현명한 조력자(동물, 나무, 친구 등)가 주인공에게 가르침을 주는 방식
-- 결과 체험: 잘못된 행동의 결과를 주인공이 직접 겪으며 반성하는 방식
-- 감정 공감: 상대방의 감정을 느끼고 이해하는 과정을 통해 변화하는 방식
-
-[제약 사항]
-- 주인공 이름은 성별이 드러나지 않는 이름으로 설정 (예: 도담, 하늘, 솔이, 누리, 봄이)
-- 공주/왕자/왕/여왕/아들/딸/남자아이/여자아이 사용 금지
-- 특정 인종·직업·지역 고정관념 없이 설정
-- 신체 위험 행동을 긍정적으로 묘사하지 마세요
-
-[출력 형식] 반드시 아래 형식 그대로 출력하세요:
-[핵심 교훈] <한 문장으로 명확하게>
-[전달 방식] <위 4가지 중 선택한 방식 + 이유 한 문장>
-[주인공 설정] <이름(성별 중립) + 처한 상황 한 문장>
-[조력자/계기] <변화를 이끄는 존재 또는 사건 한 문장>
-[결말 방향] <어떤 깨달음이나 변화로 마무리되는지 한 문장>
-[동화 분위기] <따뜻한 / 유쾌한 / 진지한 / 모험적인 중 선택>"""
-
-PLAN_USER_TEMPLATE = "다음 상황에 맞는 6~7세용 동화를 기획해 주세요:\n\n{user_request}"
-
-
-# ── 동화 생성 시스템 프롬프트 ─────────────────────────────────────────────────
+# ── 시스템 프롬프트 ───────────────────────────────────────────────────────────
 STORY_SYSTEM = """당신은 6~7세 아동을 위한 한국어 동화 작가입니다.
 주어진 기획서와 참고 동화를 바탕으로 동화 본문만 작성하세요. 기획 내용을 반복하거나 설명하지 마세요.
 
 [작성 규칙]
 - 대상 독자: 6~7세 한국 아동
-- 길이: 반드시 전체 글자 수는 700자 이상 1,200자 이하로 작성하세요 (공백 제외).
+- 길이: 반드시 전체 글자 수는 700자 이상 1,800자 이하로 작성하세요 (공백 제외).
 - 짧고 쉬운 단어를 사용하세요 (초등 1학년 수준).
-- 구조: 기승전결이 명확해야 함 (도입 → 갈등 → 반성 → 해결 순서).
+- 구조: 기승전결이 명확해야 함 (도입→갈등→반성→해결 순서)
 - 충분한 장면 묘사, 대화, 감정 표현을 넣어 이야기를 풍성하게 써주세요.
-- 갈등이 있더라도 반성·사과·화해 등 긍정적 결말로 마무리하세요.
-- 이야기 속에서 교훈이 자연스럽게 드러나야 합니다 (직접 설교 금지).
+- 갈등이 있더라도 반성·사과·화해 등 긍정적 결말로 마무리하세요. 이야기 속에서 교훈이 자연스럽게 드러나야 함 (직접 설교 금지)
 - 특정 성별·인종·직업을 고정관념화하지 마세요.
-- 폭력·갈등 묘사: 교훈을 위해 필요할 경우 허용하되, 반드시 반성·화해로 이어질 것.
-- 신체 위험 행동(높은 곳에서 뛰어내리기, 날카로운 물건 다루기 등)을 긍정적으로 묘사하지 마세요.
-- 등장 인물의 성별이 드러나지 않는 이름을 사용하세요 (예: 도담, 하늘, 솔이, 누리, 봄이).
-- 동물이 주인공이라면 코코, 토토, 하루 등 중성적 이름을 사용하세요.
+- 폭력·갈등 묘사: 교훈을 위해 필요할 경우 허용하되, 반드시 반성·화해로 이어질 것
+- 등장 인물의 성별이 드러나지 않는 이름을 사용하세요 (예: 도담, 하늘, 솔이, 누리) (동물들이 주인공이라면 코코, 토토 등).
 - 공주, 왕자, 왕, 여왕, 아들, 딸, 남자아이, 여자아이는 절대 사용하지 마세요."""
 
 
@@ -181,8 +144,8 @@ class FairyTaleGenerator:
         ]
 
         def _run() -> str:
-            # device_map="auto" 사용 시 레이어가 분산될 수 있으므로
-            # 실제 첫 번째 파라미터의 device를 기준으로 input_ids를 이동
+            # device_map="auto" 시 레이어가 분산될 수 있으므로
+            # 모델의 실제 첫 번째 파라미터 디바이스를 사용한다.
             actual_device = next(self.model.parameters()).device
             input_ids = self.tokenizer.apply_chat_template(
                 messages,
@@ -213,51 +176,29 @@ class FairyTaleGenerator:
                 return _run()
             raise
 
-    def plan(self, user_request: str) -> str:
-        """사용자 요청을 받아 동화 기획서를 생성한다."""
-        logger.info(f"카나나({self.model_id.split('/')[-1]}) — 동화 기획 생성 중...")
-        plan_text = self._chat(
-            system=PLAN_SYSTEM,
-            user=PLAN_USER_TEMPLATE.format(user_request=user_request),
-            max_new_tokens=512,
-        )
-        logger.info("카나나 기획 완료")
-        return plan_text
-
-    def generate(
-        self,
-        plan: str,
-        rewrite_hint: str = "",
-        few_shot_examples: str = "",
-    ) -> str:
+    def generate(self, plan: str, rewrite_hint: str = "", few_shot_examples: str = "") -> str:
         """
-        Solar Pro가 작성한 기획서(plan)를 받아 동화 본문을 생성한다.
+        Solar가 작성한 기획서(plan)를 받아 동화 본문을 생성한다.
 
         Args:
-            plan              : Solar Pro가 생성한 동화 기획서
+            plan              : Solar가 생성한 동화 기획
             rewrite_hint      : 이전 평가 수정 지시사항. 빈 문자열이면 무시.
             few_shot_examples : 데이터셋에서 가져온 참고 동화 텍스트 (퓨샷)
         """
         few_shot_section = ""
         if few_shot_examples:
-            few_shot_section = (
-                "\n\n[참고 동화 — 아래 동화들의 문체·구조·길이를 참고하세요]\n"
-                + few_shot_examples
-            )
+            few_shot_section = f"\n\n[참고 동화 — 아래 동화들의 문체·구조·길이를 참고하세요]\n{few_shot_examples}"
 
         hint_section = ""
         if rewrite_hint:
-            hint_section = (
-                "\n\n[이전 평가 피드백 — 반드시 반영하세요]\n"
-                + rewrite_hint
-            )
+            hint_section = f"\n\n[이전 평가 피드백 — 반드시 반영하세요]\n{rewrite_hint}"
 
         user_prompt = (
             f"아래 기획서를 바탕으로 6~7세용 한국어 동화 본문을 작성하세요.\n\n"
             f"[동화 기획서]\n{plan}"
             f"{few_shot_section}"
             f"{hint_section}\n\n"
-            f"지금 바로 동화 본문만 작성하세요. (700자 이상 1,200자 이하, 공백 제외)"
+            f"지금 바로 동화 본문만 작성하세요. (700자 이상 1,800자 이하, 공백 제외)"
         )
 
         logger.info(f"카나나({self.model_id.split('/')[-1]}) — 동화 본문 생성 중...")
@@ -266,8 +207,8 @@ class FairyTaleGenerator:
         char_count = len(story.replace(" ", ""))
         if char_count < 700:
             logger.warning(f"길이 미달 — {char_count}자 (최소 700자)")
-        elif char_count > 1200:
-            logger.warning(f"길이 초과 — {char_count}자 (최대 1,200자)")
+        elif char_count > 1800:
+            logger.warning(f"길이 초과 — {char_count}자 (최대 1,800자)")
         else:
             logger.info(f"생성 완료 — 글자 수(공백 제외): {char_count}자")
         return story

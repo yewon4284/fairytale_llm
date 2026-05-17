@@ -188,6 +188,15 @@ def _run_generation(job_id: str, user_request: str):
             logger.warning(f"image_generator.py 로드 실패 — 삽화 없이 진행: {e}")
         except Exception as e:
             logger.exception(f"이미지 생성 실패 (계속 진행): {e}")
+        finally:
+            # 이미지 생성 성공·실패 무관하게 모델 복구
+            import gc, torch
+            if not hasattr(_pipeline.generator, 'model') or _pipeline.generator.model is None:
+                logger.warning("Generator 모델 없음 → 재로딩")
+                _pipeline.generator._load_model()
+            if not hasattr(_pipeline.safeguard, 'model') or _pipeline.safeguard.model is None:
+                logger.warning("Safeguard 모델 없음 → 재로딩")
+                _pipeline.safeguard._load_model()
 
         jobs[job_id].update({
             "status": "done",
