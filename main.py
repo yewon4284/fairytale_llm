@@ -3,9 +3,9 @@ main.py
 LLM 기반 아동 동화 생성 시스템의 진입점.
 
 실행 방법:
-    python main.py
-    python main.py --request "친구를 때리면 안된다는 교훈을 주는 동화를 써줘."
-    python main.py --generator nano   # 비교 실험
+    python main.py                     # 대화형 — 동화 생성 후 계속 여부 묻기
+    python main.py --request "..."     # 요청 직접 전달 (1회 실행 후 종료)
+    python main.py --generator nano    # 비교 실험
     python main.py --mode solar_rewrite
 """
 
@@ -56,18 +56,52 @@ def load_few_shot(n: int = 2) -> str:
     데이터가 없으면 빈 문자열 반환 (퓨샷 없이 진행).
     """
     try:
-        from src.data_loader import load_communication_tales, get_sample_texts
-        tales = load_communication_tales()
-        samples = get_sample_texts(tales, n=n)
-        if not samples:
+        from src.data_loader import get_reference_stories
+        refs = get_reference_stories(n=n, classification="의사소통")
+        if not refs:
             return ""
         lines = []
-        for i, text in enumerate(samples, 1):
-            lines.append(f"[참고 동화 {i}]\n{text}")
+        for i, ref in enumerate(refs, 1):
+            title = ref.get("title", "")
+            text = ref.get("text", "").strip()
+            if text:
+                header = f"[참고 동화 {i}] {title}" if title else f"[참고 동화 {i}]"
+                lines.append(f"{header}\n{text}")
         return "\n\n".join(lines)
     except Exception as e:
         logger.warning(f"퓨샷 데이터 로드 실패 (퓨샷 없이 진행): {e}")
         return ""
+
+
+def run_once(args, api_key, generator, safeguard, evaluator, few_shot_text):
+    """동화 한 편을 생성·평가하고 결과를 출력한다."""
+    from src.generator import check_bias
+    from src.pipeline import FairyTalePipeline, RewriteMode, print_final_result
+
+    user_request = get_user_request(args)
+
+    # 편향 단어 검사
+    biased = check_bias(user_request)
+    if biased:
+        print(f"\n❌ 편향 단어 감지: '{biased}'")
+        print("   성별·인종 단어 없이 상황만 설명해 주세요.")
+        return  # 종료하지 않고 다음 루프로
+
+    pipeline = FairyTalePipeline(
+        generator=generator,
+        safeguard=safeguard,
+        evaluator=evaluator,
+        rewrite_mode=RewriteMode(args.mode),
+        few_shot_text=few_shot_text,
+    )
+
+    try:
+        result = pipeline.run(user_request)
+        print_final_result(result)
+    except ValueError as e:
+        print(f"\n❌ 오류: {e}")
+    except KeyboardInterrupt:
+        raise  # 바깥 루프에서 처리
 
 
 def main():
@@ -75,7 +109,7 @@ def main():
         description="LLM 기반 아동 동화 자동 생성 및 안전성 평가 시스템"
     )
     parser.add_argument("--request", type=str, default=None,
-                        help="동화 생성 요청 (미입력 시 대화형 입력)")
+                        help="동화 생성 요청 (입력 시 1회 실행 후 종료)")
     parser.add_argument("--mode", type=str, default="kanana_rewrite",
                         choices=["kanana_rewrite", "solar_rewrite"],
                         help="재작성 모드 (기본: kanana_rewrite)")
@@ -94,18 +128,7 @@ def main():
         logger.error("UPSTAGE_API_KEY 환경변수가 설정되지 않았습니다.")
         sys.exit(1)
 
-    # ── 사용자 요청 입력 ───────────────────────────────────────────────────────
-    user_request = get_user_request(args)
-
-    # ── 편향 단어 사전 검사 ────────────────────────────────────────────────────
-    from src.generator import check_bias
-    biased = check_bias(user_request)
-    if biased:
-        print(f"\n❌ 편향 단어 감지: '{biased}'")
-        print("   성별·인종 단어 없이 상황만 설명해 주세요.")
-        sys.exit(0)
-
-    # ── 퓨샷 데이터 로드 ──────────────────────────────────────────────────────
+    # ── 퓨샷 데이터 로드 (모델 로딩 전, 1회만) ────────────────────────────────
     print("\n⏳ 모델을 로딩합니다. 잠시 기다려 주세요...\n")
     few_shot_text = load_few_shot(n=2)
     if few_shot_text:
@@ -113,23 +136,19 @@ def main():
     else:
         logger.info("퓨샷 없이 진행합니다")
 
-    # ── Generator 모델 선택 ───────────────────────────────────────────────────
+    # ── 모델 로딩 (1회만) ─────────────────────────────────────────────────────
     from src.generator import KANANA_NANO, KANANA_15_8B, FairyTaleGenerator
     selected_model = KANANA_15_8B if args.generator == "1.5-8b" else KANANA_NANO
 
     if args.no_generator:
-        # 디버그 모드: 데이터셋 첫 번째 동화를 더미로 사용
         from unittest.mock import MagicMock
         generator = MagicMock()
         generator.model_id = selected_model
         dummy_story = few_shot_text.split("[참고 동화 1]\n")[-1].split("\n\n[참고 동화")[0].strip()
-        if not dummy_story:
-            dummy_story = "데이터셋에서 동화를 불러오지 못했습니다."
-        generator.generate.return_value = dummy_story
+        generator.generate.return_value = dummy_story or "데이터셋에서 동화를 불러오지 못했습니다."
     else:
         generator = FairyTaleGenerator(model_id=selected_model)
 
-    # ── 세이프가드 ────────────────────────────────────────────────────────────
     if args.no_safeguard:
         from unittest.mock import MagicMock
         safeguard = MagicMock()
@@ -138,29 +157,26 @@ def main():
         from src.safeguard import KananaSafeguard
         safeguard = KananaSafeguard()
 
-    # ── Evaluator ─────────────────────────────────────────────────────────────
     from src.evaluator import SolarEvaluator
     evaluator = SolarEvaluator(api_key=api_key)
 
-    # ── 파이프라인 실행 ────────────────────────────────────────────────────────
-    from src.pipeline import FairyTalePipeline, RewriteMode, print_final_result
-    pipeline = FairyTalePipeline(
-        generator=generator,
-        safeguard=safeguard,
-        evaluator=evaluator,
-        rewrite_mode=RewriteMode(args.mode),
-        few_shot_text=few_shot_text,   # 퓨샷을 파이프라인에 전달
-    )
-
-    try:
-        result = pipeline.run(user_request)
-        print_final_result(result)
-    except ValueError as e:
-        print(f"\n❌ 오류: {e}")
-        sys.exit(0)
-    except KeyboardInterrupt:
-        print("\n\n사용자가 중단했습니다.")
-        sys.exit(0)
+    # ── 실행 ──────────────────────────────────────────────────────────────────
+    # --request 인자가 있으면 1회 실행 후 종료
+    # 없으면 동화 생성 후 계속 여부를 묻고 반복
+    if args.request:
+        run_once(args, api_key, generator, safeguard, evaluator, few_shot_text)
+    else:
+        while True:
+            try:
+                run_once(args, api_key, generator, safeguard, evaluator, few_shot_text)
+                print("\n" + "=" * 70)
+                again = input("다른 동화를 만드시겠습니까? (y/n): ").strip().lower()
+                if again != "y":
+                    print("시스템을 종료합니다.")
+                    break
+            except KeyboardInterrupt:
+                print("\n\n사용자가 중단했습니다.")
+                break
 
 
 if __name__ == "__main__":

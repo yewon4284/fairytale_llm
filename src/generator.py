@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 KANANA_NANO  = "kakaocorp/kanana-nano-2.1b-instruct"           # 2.1B, 비교 실험용
 KANANA_15_8B = "kakaocorp/kanana-1.5-8b-instruct-2505"         # 8B,  현재 기본값
 
-DEFAULT_MODEL = KANANA_15_8B
+DEFAULT_MODEL = KANANA_NANO
 
 
 # ── 편향 유발 금지어 ──────────────────────────────────────────────────────────

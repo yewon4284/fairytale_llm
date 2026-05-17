@@ -1,6 +1,5 @@
 """
 data_loader.py
-───────────────
 아동 동화 데이터셋(JSON) 로더.
 '의사소통' 분류 동화만 필터링하여 Few-shot 예시 등으로 활용.
 """
@@ -45,7 +44,6 @@ def story_to_text(story: Dict) -> str:
     paragraphs = story.get("paragraphInfo", [])
     if not paragraphs:
         return ""
-    # srcPage 기준 정렬
     paragraphs_sorted = sorted(paragraphs, key=lambda p: p.get("srcPage", 0))
     return "\n".join(p.get("srcText", "") for p in paragraphs_sorted)
 
