@@ -18,6 +18,7 @@ generator.py
         Valentini et al.(2023) AoA<=6 어휘 연구 200~400 어절 권장
 """
 
+import gc
 import re
 import logging
 from typing import Optional
@@ -144,6 +145,10 @@ class FairyTaleGenerator:
         self._load_model()
 
     def _load_model(self):
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.reset_peak_memory_stats()
         logger.info(f"Generator 모델 로딩 중: {self.model_id}")
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
         self.model = AutoModelForCausalLM.from_pretrained(

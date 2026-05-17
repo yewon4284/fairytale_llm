@@ -18,6 +18,7 @@ safeguard.py
   S5 아동 성착취,  S6 자살·자해,  S7 잘못된 정보
 """
 
+import gc
 import re
 import logging
 from typing import Dict, List, Optional, Tuple
@@ -64,6 +65,10 @@ class KananaSafeguard:
         self._load_model()
 
     def _load_model(self):
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.reset_peak_memory_stats()
         logger.info(f"Safeguard 모델 로딩: {SAFEGUARD_MODEL_ID}")
         self.tokenizer = AutoTokenizer.from_pretrained(SAFEGUARD_MODEL_ID)
 

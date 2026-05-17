@@ -17,6 +17,7 @@ LLM 기반 아동 동화 생성 시스템의 진입점.
 """
 
 import argparse
+import gc
 import logging
 import os
 import sys
@@ -137,6 +138,17 @@ def main():
         sys.exit(0)
 
     print("\n⏳ 모델을 로딩합니다. 잠시 기다려 주세요...\n")
+
+    # GPU 메모리 초기화
+    gc.collect()
+    try:
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.reset_peak_memory_stats()
+            logger.info("CUDA 메모리 초기화 완료")
+    except Exception:
+        pass
 
     # 퓨샷 데이터 로드
     few_shot_text = load_few_shot(n=2)
