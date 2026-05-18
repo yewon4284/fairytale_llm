@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>동화 생성기</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Nanum+Myeongjo:wght@400;700;800&family=Gowun+Batang:wght@400;700&display=swap" rel="stylesheet" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --cream:#fdf6e3;--warm:#f0e6cc;--paper:#fffbf0;
+      --ink:#2c1810;--ink-soft:#6b4c30;
+      --accent:#c8623a;--gold:#c8a030;
+      --shadow:rgba(44,24,16,.18);--spine:#8b6410;
+    }
+    html,body{
+      height:100%;
+      background:#c8b888;
+      background-image:
+        radial-gradient(ellipse at 15% 15%,#d8c890 0%,transparent 55%),
+        radial-gradient(ellipse at 85% 85%,#b8a060 0%,transparent 55%);
+      font-family:'Gowun Batang',serif;
+      color:var(--ink);
+    }
+
+    /* ── 인트로 ── */
+    .intro{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:2rem}
+    .book-cover{
+      background:var(--cream);
+      border-radius:3px 14px 14px 3px;
+      padding:3rem 3.5rem;
+      max-width:480px;width:100%;
+      box-shadow:-10px 2px 0 var(--spine),-14px 6px 24px rgba(0,0,0,.35),6px 6px 40px rgba(0,0,0,.2);
+      border-left:8px solid var(--spine);
+      animation:rise .7s cubic-bezier(.34,1.56,.64,1);
+    }
+    @keyframes rise{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
+    .ornament{text-align:center;color:var(--gold);font-size:1.3rem;letter-spacing:.6rem;margin-bottom:1.2rem}
+    .cover-title{font-family:'Nanum Myeongjo',serif;font-size:2rem;font-weight:800;text-align:center;line-height:1.3;margin-bottom:.4rem}
+    .cover-sub{text-align:center;color:var(--ink-soft);font-size:.88rem;margin-bottom:1.8rem;letter-spacing:.06em}
+    hr.rule{border:none;border-top:1px solid var(--gold);opacity:.5;margin:1.4rem 0}
+    .field-label{display:block;font-size:.82rem;color:var(--ink-soft);margin-bottom:.5rem;letter-spacing:.05em}
+    textarea.inp{
+      width:100%;background:var(--paper);border:1.5px solid #c8a060;
+      border-radius:8px;padding:.85rem 1rem;font-family:'Gowun Batang',serif;
+      font-size:1rem;color:var(--ink);resize:vertical;min-height:88px;
+      outline:none;line-height:1.75;transition:border-color .2s,box-shadow .2s;
+    }
+    textarea.inp:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(200,98,58,.12)}
+    textarea.inp::placeholder{color:#b09060}
+    .hint{font-size:.76rem;color:#9a7850;margin-top:.45rem;line-height:1.5}
+    .err{font-size:.82rem;color:#c05040;margin-top:.7rem}
+    .btn-primary{
+      width:100%;margin-top:1.4rem;padding:.88rem;
+      background:var(--accent);color:#fff;border:none;border-radius:10px;
+      font-family:'Nanum Myeongjo',serif;font-size:1.05rem;font-weight:700;
+      cursor:pointer;letter-spacing:.05em;
+      box-shadow:0 4px 14px rgba(200,98,58,.38);
+      transition:background .2s,transform .15s,box-shadow .2s;
+    }
+    .btn-primary:hover:not(:disabled){background:#b05228;transform:translateY(-2px);box-shadow:0 6px 18px rgba(200,98,58,.45)}
+    .btn-primary:disabled{background:#c8a070;cursor:not-allowed}
+
+    /* ── 로딩 ── */
+    .loading-wrap{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2rem;padding:2rem}
+    .book-icon{width:72px;height:72px;animation:bob 2s ease-in-out infinite}
+    @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+    .loading-card{
+      background:var(--cream);border-radius:12px;padding:1.8rem 2.4rem;
+      text-align:center;max-width:380px;width:100%;
+      box-shadow:0 8px 32px var(--shadow);border-left:4px solid var(--gold);
+    }
+    .loading-step{font-family:'Nanum Myeongjo',serif;font-size:1.05rem;margin-bottom:1rem}
+    .prog-track{width:100%;height:5px;background:var(--warm);border-radius:99px;overflow:hidden}
+    .prog-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--gold));border-radius:99px;transition:width .5s ease}
+    .loading-sub{font-size:.78rem;color:var(--ink-soft);margin-top:.7rem;line-height:1.5}
+
+    /* ── 뷰어 ── */
+    .viewer-wrap{min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:2rem 1rem 5rem;gap:1.6rem}
+    .top-bar{
+      display:flex;align-items:center;gap:1rem;
+      background:rgba(253,246,227,.88);backdrop-filter:blur(6px);
+      border-radius:12px;padding:.6rem 1rem;
+      box-shadow:0 2px 12px var(--shadow);
+    }
+    .btn-nav{
+      background:transparent;border:1.5px solid var(--gold);border-radius:8px;
+      padding:.4rem 1rem;font-family:'Gowun Batang',serif;font-size:.88rem;
+      color:var(--ink);cursor:pointer;transition:background .18s;
+    }
+    .btn-nav:hover:not(:disabled){background:var(--warm)}
+    .btn-nav:disabled{opacity:.35;cursor:default}
+    .page-label{font-family:'Nanum Myeongjo',serif;font-size:.9rem;color:var(--ink-soft);min-width:64px;text-align:center}
+
+    /* 책 페이지 */
+    .book-spread{
+      width:100%;max-width:860px;
+      background:var(--paper);
+      border-radius:3px 16px 16px 3px;
+      border-left:7px solid var(--spine);
+      box-shadow:-8px 2px 0 #a07828,-12px 6px 24px rgba(0,0,0,.28),5px 5px 32px rgba(0,0,0,.16);
+      overflow:hidden;position:relative;
+      animation:flip .35s ease;
+    }
+    @keyframes flip{from{opacity:0;transform:translateX(16px)}to{opacity:1;transform:translateX(0)}}
+    .book-spread::after{
+      content:'';position:absolute;left:28px;top:0;bottom:0;
+      width:1px;background:rgba(180,140,60,.18);pointer-events:none;
+    }
+
+    /* 스프레드 그리드 */
+    .spread-grid{display:grid;grid-template-columns:1fr 1fr;min-height:480px}
+    .spread-grid.no-img{grid-template-columns:1fr}
+
+    .img-side{
+      background:var(--warm);
+      display:flex;align-items:center;justify-content:center;padding:2rem;
+      border-right:1px solid rgba(180,140,60,.2);
+    }
+    .spread-img{width:100%;max-width:340px;border-radius:10px;box-shadow:0 6px 24px var(--shadow);display:block}
+    .img-fallback{
+      width:100%;max-width:280px;aspect-ratio:1;border-radius:10px;
+      background:linear-gradient(135deg,#e8d8b0,#d4c090);
+      display:flex;align-items:center;justify-content:center;
+      color:#a08040;font-size:2.5rem;
+    }
+
+    .text-side{padding:2.5rem 2.8rem 3rem 2.4rem;display:flex;flex-direction:column;justify-content:center}
+    .text-side.wide{padding:3rem 3.5rem 3rem 4rem}
+
+    .para{font-size:1.08rem;line-height:2.1;color:var(--ink);margin-bottom:1.3rem;text-indent:1.5em}
+    .first-page .para:first-child::first-letter{
+      font-family:'Nanum Myeongjo',serif;
+      font-size:3.2rem;font-weight:800;
+      float:left;line-height:.78;margin:.08em .12em 0 0;
+      color:var(--accent);
+    }
+
+    .page-num{position:absolute;bottom:1rem;right:1.4rem;font-size:.72rem;color:var(--gold);font-family:'Nanum Myeongjo',serif}
+
+    /* ── 에러 ── */
+    .error-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center}
+    .error-card{background:#fff2ee;border:1.5px solid #e8a080;border-radius:12px;padding:2rem 2.5rem;text-align:center;max-width:400px}
+    .error-card h3{color:var(--accent);margin-bottom:.6rem;font-family:'Nanum Myeongjo',serif}
+    .error-card p{color:var(--ink-soft);font-size:.9rem;line-height:1.6}
+    .btn-retry{margin-top:1.2rem;padding:.6rem 1.6rem;background:var(--accent);color:#fff;border:none;border-radius:8px;font-family:'Gowun Batang',serif;cursor:pointer}
+
+    @media(max-width:640px){
+      .spread-grid{grid-template-columns:1fr}
+      .img-side{border-right:none;border-bottom:1px solid rgba(180,140,60,.2);padding:1.5rem}
+      .text-side{padding:1.5rem 1.8rem 2rem 2rem}
+      .text-side.wide{padding:2rem 1.5rem 2rem 2rem}
+    }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+const API = window.location.origin;
+
+function buildPages(story, images, pageInfo) {
+  const paras = story.split('\n').filter(p => p.trim());
+
+  // page_info가 있으면 Solar가 분할한 기승전결 구조 사용
+  if (pageInfo && pageInfo.length > 0) {
+    return pageInfo.map((info, i) => {
+      // paragraphs는 1-based 인덱스
+      const indices = (info.paragraphs || []).map(n => n - 1);
+      const pageParagraphs = indices
+        .filter(idx => idx >= 0 && idx < paras.length)
+        .map(idx => paras[idx]);
+      return {
+        paragraphs: pageParagraphs.length > 0 ? pageParagraphs : [paras[i] || ''],
+        image: info.image || images[i] || null,
+        section: info.section || '',
+        summary: info.summary_ko || '',
+      };
+    });
+  }
+
+  // page_info 없으면 이미지 수 기준 균등 분할
+  const count = images.length > 0 ? images.length : Math.ceil(paras.length / 3);
+  const perPage = Math.ceil(paras.length / count);
+  return Array.from({ length: count }, (_, i) => ({
+    paragraphs: paras.slice(i * perPage, (i + 1) * perPage),
+    image: images[i] || null,
+    section: '',
+    summary: '',
+  }));
+}
+
+function imgSrc(img) {
+  if (!img) return null;
+  return img.startsWith('http') ? img : `${API}/images/${img}`;
+}
+
+/* 인트로 */
+function Intro({ onGenerate }) {
+  const [val, setVal] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  async function submit() {
+    if (!val.trim()) return;
+    setErr(''); setBusy(true);
+    try {
+      const res = await fetch(`${API}/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ request: val.trim() }),
+      });
+      if (!res.ok) { const d = await res.json(); throw new Error(d.detail || '요청 실패'); }
+      onGenerate((await res.json()).job_id);
+    } catch(e) { setErr(e.message); setBusy(false); }
+  }
+
+  return (
+    <div className="intro">
+      <div className="book-cover">
+        <div className="ornament">✦ ✦ ✦</div>
+        <h1 className="cover-title">동화 생성기</h1>
+        <p className="cover-sub">AI가 쓰는 6~7세 맞춤 동화</p>
+        <hr className="rule" />
+        <label className="field-label">어떤 교훈을 담은 동화를 원하시나요?</label>
+        <textarea
+          className="inp"
+          placeholder={'예시:\n"친구에게 욕설을 하면 안된다는 교훈"\n"음식을 남기지 않아야 한다는 교훈"'}
+          value={val}
+          onChange={e => setVal(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && e.metaKey) submit(); }}
+        />
+        <p className="hint">⚠ 공주·왕자·아들·딸·특정 성별·인종 단어는 입력하지 마세요.</p>
+        {err && <p className="err">❌ {err}</p>}
+        <button className="btn-primary" onClick={submit} disabled={busy || !val.trim()}>
+          {busy ? '요청 중...' : '✨ 동화 만들기'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* 로딩 */
+function Loading({ jobId, onDone, onError }) {
+  const [step, setStep] = useState('준비 중...');
+  const [prog, setProg] = useState(0);
+  const timer = useRef(null);
+
+  useEffect(() => {
+    timer.current = setInterval(async () => {
+      try {
+        const s = await (await fetch(`${API}/status/${jobId}`)).json();
+        setStep(s.step || ''); setProg(s.progress || 0);
+        if (s.status === 'done') {
+          clearInterval(timer.current);
+          onDone(await (await fetch(`${API}/result/${jobId}`)).json());
+        } else if (s.status === 'error') {
+          clearInterval(timer.current);
+          onError(s.step || '알 수 없는 오류');
+        }
+      } catch(e) { console.error(e); }
+    }, 2000);
+    return () => clearInterval(timer.current);
+  }, [jobId]);
+
+  return (
+    <div className="loading-wrap">
+      <svg className="book-icon" viewBox="0 0 72 72" fill="none">
+        <rect x="8" y="8" width="26" height="56" rx="3" fill="#c8a030" opacity=".75"/>
+        <rect x="34" y="8" width="30" height="56" rx="3" fill="#fdf6e3" stroke="#c8a060" strokeWidth="1.5"/>
+        <line x1="40" y1="22" x2="58" y2="22" stroke="#c8a060" strokeWidth="1.5" strokeLinecap="round"/>
+        <line x1="40" y1="30" x2="58" y2="30" stroke="#c8a060" strokeWidth="1.5" strokeLinecap="round"/>
+        <line x1="40" y1="38" x2="52" y2="38" stroke="#c8a060" strokeWidth="1.5" strokeLinecap="round"/>
+        <line x1="40" y1="48" x2="58" y2="48" stroke="#e8d080" strokeWidth="1.5" strokeLinecap="round"/>
+      </svg>
+      <div className="loading-card">
+        <p className="loading-step">📖 {step}</p>
+        <div className="prog-track">
+          <div className="prog-fill" style={{ width:`${prog}%` }} />
+        </div>
+        <p className="loading-sub">Solar Pro 기획 → 카나나 생성 → 세이프가드 → Solar Pro 심사 → 삽화 생성</p>
+      </div>
+    </div>
+  );
+}
+
+/* 뷰어 */
+function BookViewer({ result, onBack }) {
+  const pages = buildPages(result.story, result.images, result.page_info);
+  const [idx, setIdx] = useState(0);
+  const [imgErr, setImgErr] = useState(false);
+
+  useEffect(() => { setImgErr(false); }, [idx]);
+
+  const cur = pages[idx] || { paragraphs: [], image: null };
+  const src = cur.image ? imgSrc(cur.image) : null;
+  const hasImg = src && !imgErr;
+
+  return (
+    <div className="viewer-wrap">
+      <div className="top-bar">
+        <button className="btn-nav" onClick={onBack}>← 처음으로</button>
+        <button className="btn-nav" onClick={() => setIdx(i => i - 1)} disabled={idx === 0}>◀ 이전</button>
+        <span className="page-label">{idx + 1} / {pages.length}</span>
+        <button className="btn-nav" onClick={() => setIdx(i => i + 1)} disabled={idx === pages.length - 1}>다음 ▶</button>
+      </div>
+
+      <div className="book-spread" key={idx}>
+        <div className={`spread-grid ${hasImg ? '' : 'no-img'}`}>
+
+          {hasImg && (
+            <div className="img-side">
+              <img
+                src={src}
+                className="spread-img"
+                alt={`장면 ${idx + 1}`}
+                onError={() => setImgErr(true)}
+              />
+            </div>
+          )}
+
+          {!hasImg && cur.image && (
+            <div className="img-side">
+              <div className="img-fallback">🖼</div>
+            </div>
+          )}
+
+          <div className={`text-side ${hasImg ? '' : 'wide'} ${idx === 0 ? 'first-page' : ''}`}>
+            {cur.paragraphs.map((p, i) => (
+              <p key={i} className="para">{p}</p>
+            ))}
+          </div>
+        </div>
+        <span className="page-num">{idx + 1}</span>
+      </div>
+    </div>
+  );
+}
+
+/* 루트 */
+function App() {
+  const [phase, setPhase] = useState('intro');
+  const [jobId, setJobId] = useState(null);
+  const [result, setResult] = useState(null);
+  const [errMsg, setErrMsg] = useState('');
+
+  if (phase === 'intro')
+    return <Intro onGenerate={id => { setJobId(id); setPhase('loading'); }} />;
+  if (phase === 'loading')
+    return <Loading jobId={jobId}
+             onDone={r => { setResult(r); setPhase('viewer'); }}
+             onError={m => { setErrMsg(m); setPhase('error'); }} />;
+  if (phase === 'viewer')
+    return <BookViewer result={result} onBack={() => setPhase('intro')} />;
+
+  return (
+    <div className="error-wrap">
+      <div className="error-card">
+        <h3>오류가 발생했습니다</h3>
+        <p>{errMsg}</p>
+        <button className="btn-retry" onClick={() => setPhase('intro')}>← 다시 시도</button>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
