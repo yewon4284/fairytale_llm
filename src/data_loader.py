@@ -11,7 +11,7 @@ import random
 from typing import List, Dict, Optional
 
 
-DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
+DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data_sorted") #동화 페이지순 정렬된 데이터
 
 
 def load_all_stories(data_dir: str = DATA_DIR) -> List[Dict]:
