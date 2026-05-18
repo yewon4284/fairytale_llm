@@ -31,9 +31,10 @@ from src.evaluator import SolarEvaluator
 load_dotenv()
 logger = logging.getLogger(__name__)
 
-MAX_ATTEMPTS = 4
-LENGTH_MIN   = 700
-LENGTH_MAX   = 1800
+MAX_ATTEMPTS     = 4   # 평가 시도 최대 횟수
+MAX_LENGTH_RETRY = 3   # 길이 미달/초과 재생성 최대 횟수 (평가 횟수와 별도)
+LENGTH_MIN       = 700
+LENGTH_MAX       = 1800
 
 
 # ── 재작성 모드 ──────────────────────────────────────────────────────────────
@@ -81,12 +82,18 @@ class FairyTalePipeline:
         evaluator: SolarEvaluator,
         rewrite_mode: RewriteMode = DEFAULT_MODE,
         few_shot_text: str = "",
+        status_callback=None,
     ):
-        self.generator    = generator
-        self.safeguard    = safeguard
-        self.evaluator    = evaluator
-        self.rewrite_mode = rewrite_mode
-        self.few_shot_text = few_shot_text
+        self.generator      = generator
+        self.safeguard      = safeguard
+        self.evaluator      = evaluator
+        self.rewrite_mode   = rewrite_mode
+        self.few_shot_text  = few_shot_text
+        self.status_callback = status_callback  # (step: str, progress: int) -> None
+
+    def _update_status(self, step: str, progress: int):
+        if self.status_callback:
+            self.status_callback(step, progress)
 
     def run(self, user_request: str) -> PipelineResult:
         # ── 편향 단어 검사 ────────────────────────────────────────────────────
@@ -111,18 +118,42 @@ class FairyTalePipeline:
 
             # ── Step 1: 동화 기획 (Solar, 1회차만) ───────────────────────────
             if attempt == 1:
+                self._update_status("Solar Pro — 동화 기획 중...", 10)
                 print("\n🧩 [Step 1] Solar — 동화 기획 생성 중...")
                 final_plan = self.evaluator.plan(user_request)
                 print(final_plan)
 
-            # ── Step 2: 동화 본문 생성 ────────────────────────────────────────
+            # ── Step 2: 동화 본문 생성 + 길이 체크 (별도 재시도 루프) ─────────
             if attempt == 1 or self.rewrite_mode == RewriteMode.KANANA_REWRITE:
-                print(f"\n📝 [Step 2] 카나나({self.generator.model_id.split('/')[-1]}) — 동화 {'재' if attempt > 1 else ''}생성 중...")
-                story = self.generator.generate(
-                    final_plan,
-                    rewrite_hint,
-                    few_shot_examples=self.few_shot_text,
-                )
+                length_hint = rewrite_hint
+                for length_try in range(1, MAX_LENGTH_RETRY + 2):
+                    self._update_status(
+                        f"카나나 — 동화 {'재' if (attempt > 1 or length_try > 1) else ''}생성 중... (시도 {attempt})",
+                        20 + attempt * 5
+                    )
+                    print(f"\n📝 [Step 2] 카나나({self.generator.model_id.split('/')[-1]}) — 동화 {'재' if (attempt > 1 or length_try > 1) else ''}생성 중...")
+                    story = self.generator.generate(
+                        final_plan,
+                        length_hint,
+                        few_shot_examples=self.few_shot_text,
+                    )
+                    char_count = len(story.replace(" ", ""))
+                    print("\n📖 [생성된 동화]")
+                    print(story)
+                    print(f"\n  글자 수 (공백 제외): {char_count}자")
+
+                    if LENGTH_MIN <= char_count <= LENGTH_MAX:
+                        break  # 길이 통과 → 평가 진행
+
+                    direction = "미달" if char_count < LENGTH_MIN else "초과"
+                    print(f"\n⚠ 글자 수 {direction} ({char_count}자) — 재생성 ({length_try}/{MAX_LENGTH_RETRY})")
+                    if length_try <= MAX_LENGTH_RETRY:
+                        length_hint = (
+                            f"이전 동화가 {char_count}자로 길이 {direction}입니다. "
+                            f"반드시 {LENGTH_MIN}자 이상 {LENGTH_MAX}자 이하로 작성하세요 (공백 제외)."
+                        )
+                    else:
+                        print(f"⚠ 길이 재시도 {MAX_LENGTH_RETRY}회 초과 — 현재 동화로 평가 진행")
                 generator_label = self.generator.model_id.split("/")[-1]
             else:
                 print(f"\n✏️  [Step 2] Solar — 이전 동화 직접 수정 중... (시도 {attempt})")
@@ -132,32 +163,17 @@ class FairyTalePipeline:
                     eval_result=records[-1].eval_result,
                 )
                 generator_label = "solar-pro (직접 수정)"
+                char_count = len(story.replace(" ", ""))
+                print("\n📖 [생성된 동화]")
+                print(story)
+                print(f"\n  글자 수 (공백 제외): {char_count}자")
 
             final_story    = story
             previous_story = story
-
-            print("\n📖 [생성된 동화]")
-            print(story)
-            char_count = len(story.replace(" ", ""))
-            print(f"\n  글자 수 (공백 제외): {char_count}자")
             print(f"  생성 주체: {generator_label}")
 
-            # ── 길이 하드체크 ─────────────────────────────────────────────────
-            if not (LENGTH_MIN <= char_count <= LENGTH_MAX):
-                direction = "미달" if char_count < LENGTH_MIN else "초과"
-                print(f"\n⚠ 글자 수 {direction} ({char_count}자) — 평가 건너뜀")
-                if attempt < MAX_ATTEMPTS:
-                    rewrite_hint = (
-                        f"이전 동화가 {char_count}자로 길이 {direction}입니다. "
-                        f"반드시 {LENGTH_MIN}자 이상 {LENGTH_MAX}자 이하로 작성하세요 (공백 제외)."
-                    )
-                    print(f"🔄 재생성 시작 (시도 {attempt + 1}/{MAX_ATTEMPTS})")
-                    continue
-                else:
-                    print(f"⚠ 최대 시도 횟수({MAX_ATTEMPTS}회) 초과. 마지막 동화를 출력합니다.")
-                    break
-
             # ── Step 3: 1차 평가 (카나나 세이프가드) ─────────────────────────
+            self._update_status(f"1차 평가 중... (시도 {attempt})", 45 + attempt * 5)
             print("\n🔍 [Step 3] 1차 평가 — 카나나 세이프가드")
             sentences, flagged = self.safeguard.evaluate_story(story)
             if flagged:
@@ -168,6 +184,7 @@ class FairyTalePipeline:
                 print("  ✅ 모든 문장 1차 평가 통과")
 
             # ── Step 4: 2차 평가 (Solar) ──────────────────────────────────────
+            self._update_status(f"Solar Pro — 품질 평가 중... (시도 {attempt})", 60 + attempt * 5)
             print("\n🧠 [Step 4] 2차 평가 — Solar API (맥락 기반)")
             eval_result, passed, eval_summary = self.evaluator.evaluate(
                 story, flagged, user_request=user_request

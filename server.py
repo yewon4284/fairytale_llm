@@ -86,6 +86,7 @@ class ResultResponse(BaseModel):
     passed: bool
     total_attempts: int
     images: list         # 이미지 URL 리스트
+    page_info: list      # 페이지별 분할 정보 (paragraphs, section, summary, image)
     scores: list         # 시도별 점수 히스토리
 
 
@@ -128,8 +129,13 @@ def _run_generation(job_id: str, user_request: str):
         if _pipeline is None:
             _load_pipeline()
 
-        jobs[job_id]["step"] = "Solar Pro — 동화 기획 중..."
-        jobs[job_id]["progress"] = 15
+        def status_callback(step: str, progress: int):
+            jobs[job_id]["step"]     = step
+            jobs[job_id]["progress"] = progress
+
+        _pipeline.status_callback = status_callback
+        jobs[job_id]["step"]     = "Solar Pro — 동화 기획 중..."
+        jobs[job_id]["progress"] = 10
 
         result = _pipeline.run(user_request)
 
@@ -158,10 +164,10 @@ def _run_generation(job_id: str, user_request: str):
             gc.collect()
             logger.info("GPU 메모리 확보 완료")
 
-            jobs[job_id]["step"] = "Solar Pro — 장면 프롬프트 추출 중..."
+            jobs[job_id]["step"]     = "이미지 생성 중... (기승전결 4분할)"
             jobs[job_id]["progress"] = 75
 
-            paths, scenes = img_gen.generate(result.final_story, result.final_plan)
+            paths, page_info = img_gen.generate(result.final_story, result.final_plan)
 
             jobs[job_id]["step"] = "삽화 저장 완료"
             jobs[job_id]["progress"] = 95
@@ -171,6 +177,7 @@ def _run_generation(job_id: str, user_request: str):
                 p if p.startswith("http") else os.path.basename(p)
                 for p in paths
             ]
+            jobs[job_id]["page_info"] = page_info
             logger.info(f"이미지 {len(images)}장 생성 완료")
 
             # ── SDXL 해제 후 Generator·Safeguard 다시 로딩 ──
@@ -284,6 +291,7 @@ async def get_result(job_id: str):
         passed=j.get("passed", False),
         total_attempts=j.get("total_attempts", 0),
         images=j.get("images", []),
+        page_info=j.get("page_info", []),
         scores=j.get("scores", []),
     )
 
