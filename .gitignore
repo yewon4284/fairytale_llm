@@ -11,3 +11,5 @@ data/
 *.pth
 test_data/
 test_data/
+venv/
+.venv/
