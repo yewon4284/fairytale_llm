@@ -198,6 +198,8 @@ class FairyTalePipeline:
                 print("  ✅ 모든 문장 1차 평가 통과")
 
             # ── Step 4: 2차 평가 (Solar) ──────────────────────────────────────
+            # 세이프가드 태깅 결과를 항상 Solar에 전달한다.
+            # S3/S5/S6/S8이 태깅된 경우 Solar 프롬프트 규칙에 의해 맥락 무관 FAIL 처리된다.
             print("\n🧠 [Step 4] 2차 평가 — Solar API (맥락 기반)")
             eval_result, passed, eval_summary = self.evaluator.evaluate(
                 story, flagged, user_request=user_request
@@ -261,6 +263,7 @@ class FairyTalePipeline:
 
 
 # ── 출력 헬퍼 ────────────────────────────────────────────────────────────────
+
 def _print_header(user_request: str, mode: RewriteMode, model_id: str):
     mode_label = {
         RewriteMode.KANANA_REWRITE: "MODE A — 카나나 재생성 (Solar 지시 → 카나나 재작성)",

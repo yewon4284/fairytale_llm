@@ -15,10 +15,12 @@ safeguard.py
 
 import re
 import logging
+from pathlib import Path
 from typing import List, Tuple, Dict
 
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
+from peft import PeftModel
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +35,11 @@ CATEGORY_DESC: Dict[str, str] = {
     "S5": "아동 성착취",
     "S6": "자살·자해",
     "S7": "잘못된 정보",
+    "S8": "그루밍 범죄",
 }
+
+# 파인튜닝된 S8 어댑터 경로 (학습 후 설정)
+S8_ADAPTER_PATH: str = "finetune/kanana-s8-adapter/final_adapter"
 
 # 문장 분리용 정규식 (마침표, 물음표, 느낌표 뒤 공백 기준)
 SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?요])\s+")
@@ -45,10 +51,11 @@ SAFEGUARD_PROMPT_TEMPLATE = (
 
 
 class KananaSafeguard:
-    """카나나 세이프가드 8B 래퍼"""
+    """카나나 세이프가드 8B 래퍼 (S8 LoRA 어댑터 선택 지원)"""
 
-    def __init__(self, device: str = "cuda"):
+    def __init__(self, device: str = "cuda", use_s8_adapter: bool = True):
         self.device = device
+        self.use_s8_adapter = use_s8_adapter
         logger.info(f"Safeguard 디바이스: {self.device}")
         self._load_model()
 
@@ -60,6 +67,18 @@ class KananaSafeguard:
             torch_dtype=torch.float16,
             device_map="auto",
         )
+
+        adapter_path = Path(S8_ADAPTER_PATH)
+        if self.use_s8_adapter and adapter_path.exists():
+            logger.info(f"S8 LoRA 어댑터 로딩: {adapter_path}")
+            self.model = PeftModel.from_pretrained(self.model, str(adapter_path))
+            logger.info("S8 어댑터 로딩 완료")
+        elif self.use_s8_adapter:
+            logger.warning(
+                f"S8 어댑터 경로 없음({adapter_path}). 베이스 모델로만 실행합니다. "
+                "파인튜닝 후 S8_ADAPTER_PATH를 확인하세요."
+            )
+
         self.model.eval()
         logger.info("Safeguard 모델 로딩 완료")
 
@@ -69,7 +88,8 @@ class KananaSafeguard:
         Returns: '<SAFE>' 또는 '<UNSAFE-Sx>'
         """
         prompt = SAFEGUARD_PROMPT_TEMPLATE.format(text=sentence)
-        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
+        device = next(self.model.parameters()).device
+        inputs = self.tokenizer(prompt, return_tensors="pt").to(device)
 
         with torch.no_grad():
             output = self.model.generate(
