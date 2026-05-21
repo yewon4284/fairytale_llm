@@ -14,11 +14,14 @@ from typing import List, Dict, Optional
 DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data_sorted") #동화 페이지순 정렬된 데이터
 
 
-def load_all_stories(data_dir: str = DATA_DIR) -> List[Dict]:
-    """data/ 폴더 안의 JSON 파일을 모두 로드."""
+def load_all_stories(data_dir: str = DATA_DIR, limit: Optional[int] = None) -> List[Dict]:
+    """data/ 폴더 안의 JSON 파일을 알파벳 순서로 로드. limit 지정 시 앞에서 limit개만."""
     stories = []
     pattern = os.path.join(data_dir, "*.json")
-    for filepath in glob.glob(pattern):
+    filepaths = sorted(glob.glob(pattern))
+    if limit is not None:
+        filepaths = filepaths[:limit]
+    for filepath in filepaths:
         try:
             with open(filepath, "r", encoding="utf-8") as f:
                 data = json.load(f)
@@ -58,7 +61,7 @@ def get_reference_stories(
     Few-shot 프롬프트용 참고 동화 n편을 무작위 추출.
     반환 형식: [{"title": ..., "text": ...}, ...]
     """
-    all_stories = load_all_stories(data_dir)
+    all_stories = load_all_stories(data_dir, limit=20)
     filtered = filter_by_classification(all_stories, classification)
     if seed is not None:
         random.seed(seed)
