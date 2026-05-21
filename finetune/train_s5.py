@@ -113,8 +113,7 @@ def main(args):
         logging_steps=10,
         eval_strategy="epoch",
         save_strategy="epoch",
-        load_best_model_at_end=True,
-        metric_for_best_model="eval_loss",
+        load_best_model_at_end=False,
         report_to="none",
         optim="paged_adamw_8bit",
         max_seq_length=256,
@@ -135,8 +134,7 @@ def main(args):
 
     adapter_path = Path(args.output) / "final_adapter"
     adapter_path.mkdir(parents=True, exist_ok=True)
-    # trainer.model 대신 원본 peft model로 저장 (TRL 래핑 우회)
-    model.save_pretrained(str(adapter_path))
+    trainer.save_model(str(adapter_path))
     tokenizer.save_pretrained(str(adapter_path))
     print(f"\n어댑터 저장 완료: {adapter_path}")
 

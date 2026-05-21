@@ -67,14 +67,18 @@ class KananaSafeguard:
             device_map="auto",
         )
 
-        adapter_path = Path(S5_ADAPTER_PATH)
-        if self.use_s5_adapter and adapter_path.exists():
+        adapter_path = Path(S5_ADAPTER_PATH).resolve()
+        has_weights = (
+            (adapter_path / "adapter_model.safetensors").exists()
+            or (adapter_path / "adapter_model.bin").exists()
+        )
+        if self.use_s5_adapter and has_weights:
             logger.info(f"S5 LoRA 어댑터 로딩: {adapter_path}")
             self.model = PeftModel.from_pretrained(self.model, str(adapter_path))
             logger.info("S5 어댑터 로딩 완료")
         elif self.use_s5_adapter:
             logger.warning(
-                f"S5 어댑터 경로 없음({adapter_path}). 베이스 모델로만 실행합니다. "
+                f"S5 어댑터 가중치 없음({adapter_path}). 베이스 모델로만 실행합니다. "
                 "파인튜닝 후 S5_ADAPTER_PATH를 확인하세요."
             )
 
