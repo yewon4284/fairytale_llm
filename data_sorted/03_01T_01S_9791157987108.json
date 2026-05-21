@@ -1,0 +1,195 @@
+{
+  "title": "두꺼비와 토끼와 호랑이의 떡 먹기",
+  "author": "이상교",
+  "illustrator": "윤봉선",
+  "isbn": "9791157987108",
+  "readAge": "유아",
+  "publishedYear": 2019,
+  "publisher": "세이펜북스",
+  "classification": "의사소통",
+  "paragraphInfoCount": 26,
+  "paragraphInfo": [
+    {
+      "srcTextID": "95913",
+      "srcText": "옛날 옛적 깊은 산속에 두꺼비, 토끼, 호랑이가 살았어. 때는 추운 겨울이었지. 셋은 며칠 동안 굶어서 배에서 꼬르륵꼬르륵 소리가 났어.",
+      "srcPage": 1,
+      "srcSentenceEA": 3,
+      "srcWordEA": 21
+    },
+    {
+      "srcTextID": "95912",
+      "srcText": "셋은 떡을 해 먹기로 하고 마을로 내려가 이것저것 훔쳤어. \"이만하면 떡을 해 먹을 수 있을 거야!\" 셋은 숲으로 돌아갔어.",
+      "srcPage": 2,
+      "srcSentenceEA": 3,
+      "srcWordEA": 20
+    },
+    {
+      "srcTextID": "95915",
+      "srcText": "시루에 쌀가루를 안치고 솥에 올렸어. \"김이 솔솔 오르면 맛있는 떡이 될 테지!\" 바위 사이에 솥을 걸고 두꺼비가 활활 불을 땠지.",
+      "srcPage": 3,
+      "srcSentenceEA": 3,
+      "srcWordEA": 21
+    },
+    {
+      "srcTextID": "95914",
+      "srcText": "셋은 침을 꿀꺽꿀꺽 삼키며 떡이 익기를 기다렸어. '나 혼자 다 먹어도 모자랄 텐데.' 호랑이는 생각했어. '어떻게든 내가 다 먹어야지!'",
+      "srcPage": 4,
+      "srcSentenceEA": 4,
+      "srcWordEA": 20
+    },
+    {
+      "srcTextID": "95916",
+      "srcText": "\"셋 중 술을 가장 못 마시는 쪽이 떡을 혼자 다 먹는 게 어때?\" 호랑이는 시침을 뚝 떼고 말을 꺼냈어. 두꺼비와 토끼는 호랑이의 두툼한 발을 보았어.",
+      "srcPage": 5,
+      "srcSentenceEA": 3,
+      "srcWordEA": 27
+    },
+    {
+      "srcTextID": "95917",
+      "srcText": "둘은 떡 맛도 못 보고 죽을지 모르겠다 생각했지. \"그래, 그게 좋아.\" \"나도 좋아.\" 둘은 마지못해 대꾸했어.",
+      "srcPage": 6,
+      "srcSentenceEA": 4,
+      "srcWordEA": 17
+    },
+    {
+      "srcTextID": "95918",
+      "srcText": "\"나는 밀밭에만 가도 취해.\" 호랑이가 먼저 말했어. \"난 술 취한 사람 얼굴만 봐도 취하는걸.\" 토끼가 말했지.",
+      "srcPage": 7,
+      "srcSentenceEA": 4,
+      "srcWordEA": 18
+    },
+    {
+      "srcTextID": "95919",
+      "srcText": "둘의 말에 두꺼비는 몸을 앞뒤로 옆으로 마구 흔들었어. \"왜 갑자기 몸을 흔드는 거니?\" 호랑이와 토끼가 물었어. \"너희 술, 술 소리에 벌써 취해 버렸어.\" 말할 것 없이 두꺼비가 이긴 거지.",
+      "srcPage": 8,
+      "srcSentenceEA": 5,
+      "srcWordEA": 31
+    },
+    {
+      "srcTextID": "95922",
+      "srcText": "\"어, 잠깐만! 다른 내기를 하는 게 좋겠어.\" 호랑이는 이어서 말했어.",
+      "srcPage": 9,
+      "srcSentenceEA": 3,
+      "srcWordEA": 12
+    },
+    {
+      "srcTextID": "95921",
+      "srcText": "\"셋 중 나이가 제일 많은 쪽이 떡을 혼자 다 먹는 게 어때?\" 두꺼비와 토끼는 호랑이의 삐죽 나온 이빨을 보았어. 둘은 떡 맛도 못 보고 죽을지 모르겠다 생각했지.",
+      "srcPage": 10,
+      "srcSentenceEA": 3,
+      "srcWordEA": 29
+    },
+    {
+      "srcTextID": "95923",
+      "srcText": "\"나는 이 세상이 만들어질 때 하늘에 별을 달았지.\" 호랑이가 먼저 말했어. \"아, 그때 네가 딛고 올라선 사다리는 내가 심은 나무로 만든 거란다.\" 토끼도 지지 않았어.",
+      "srcPage": 11,
+      "srcSentenceEA": 4,
+      "srcWordEA": 27
+    },
+    {
+      "srcTextID": "95925",
+      "srcText": "둘의 말에 두꺼비는 눈물을 줄줄 흘렸어. \"떡을 못 먹게 되어서 우는 거로구나.\" 둘은 말했겠지.",
+      "srcPage": 12,
+      "srcSentenceEA": 3,
+      "srcWordEA": 15
+    },
+    {
+      "srcTextID": "95924",
+      "srcText": "\"아니, 세상이 만들어지기도 전에 죽은 아들이 생각나 우는 거라네. 토끼가 사다리 만들 때 쓴 망치 자루는 내 아들이 심은 나무로 만들었거든.\" 두꺼비가 또 이겼어.",
+      "srcPage": 13,
+      "srcSentenceEA": 3,
+      "srcWordEA": 26
+    },
+    {
+      "srcTextID": "95928",
+      "srcText": "\"으흠, 안 되겠어! 다른 내기 해.\" 호랑이는 눈을 부리부리 뜨며 말했어.",
+      "srcPage": 14,
+      "srcSentenceEA": 3,
+      "srcWordEA": 13
+    },
+    {
+      "srcTextID": "95927",
+      "srcText": "\"셋 중 압록강을 먼저 헤엄쳐 건너온 쪽이 떡을 혼자 다 먹는 거야. 어때?\" 두꺼비와 토끼는 호랑이의 날카로운 발톱에 눈이 갔어. 둘은 떡 맛도 못 보고 죽을지 모르겠다 생각했지.",
+      "srcPage": 15,
+      "srcSentenceEA": 4,
+      "srcWordEA": 31
+    },
+    {
+      "srcTextID": "95929",
+      "srcText": "호랑이와 토끼가 강물 속으로 뛰어들자, 두꺼비는 호랑이 꼬리를 꽉 붙잡고 매달렸어. 앞선 호랑이가 있는 힘을 다할 때 두꺼비는 부웅 튕겨 올랐어. 와우! 두꺼비는 몸을 날려 강둑에 사뿐히 올라앉았어. 강둑에는 마침 썩은 짚신 한 켤레가 놓여 있었지.",
+      "srcPage": 16,
+      "srcSentenceEA": 5,
+      "srcWordEA": 40
+    },
+    {
+      "srcTextID": "95930",
+      "srcText": "\"아이고, 이제야 오다니. 강을 헤엄쳐 와서 너희를 기다리며 삼아 신은 짚신이 이 지경이 되었어.\" 두꺼비는 제 발의 썩은 짚신을 가리키며 눈을 꿈적였어.",
+      "srcPage": 17,
+      "srcSentenceEA": 3,
+      "srcWordEA": 24
+    },
+    {
+      "srcTextID": "95931",
+      "srcText": "두꺼비가 둘을 보기 좋게 이긴 거야. \"떡은 이제 내 거야!\" 두꺼비는 뽐내며 말했어.",
+      "srcPage": 18,
+      "srcSentenceEA": 3,
+      "srcWordEA": 14
+    },
+    {
+      "srcTextID": "95932",
+      "srcText": "\"으흐흥, 잠깐만 기다려!\" 호랑이는 부들부들 떨며 소리쳤어. \"떡시루를 산꼭대기에서 굴려 먼저 쫓아가 잡는 쪽이 떡을 다 먹는 거야!\"",
+      "srcPage": 19,
+      "srcSentenceEA": 3,
+      "srcWordEA": 19
+    },
+    {
+      "srcTextID": "95934",
+      "srcText": "그러고는 떡시루를 산비탈 아래로 굴려 보냈어. 데굴데굴 데구르르. 호랑이와 토끼도 힘껏 달려 내려갔어.",
+      "srcPage": 20,
+      "srcSentenceEA": 3,
+      "srcWordEA": 15
+    },
+    {
+      "srcTextID": "95933",
+      "srcText": "'이제야말로 떡은 내 차지야!' 둘은 생각했지. 두꺼비는 엉금엉금 산비탈을 기어 내려갔어.",
+      "srcPage": 21,
+      "srcSentenceEA": 3,
+      "srcWordEA": 13
+    },
+    {
+      "srcTextID": "95936",
+      "srcText": "데굴데굴 굴러가던 떡시루가 나무 밑둥치에 턱 걸렸어. '옳다구나!' 두꺼비는 떡시루의 떡을 우물우물 먹기 시작했어. 먹고 먹고 또 먹었는데도 떡이 남았어.",
+      "srcPage": 22,
+      "srcSentenceEA": 3,
+      "srcWordEA": 22
+    },
+    {
+      "srcTextID": "95935",
+      "srcText": "'아까워서 어쩌지?' 두꺼비는 남은 떡을 등어리에 지질지질 붙여 놓았어. 배고플 때 먹으려고 말이야.",
+      "srcPage": 23,
+      "srcSentenceEA": 3,
+      "srcWordEA": 15
+    },
+    {
+      "srcTextID": "95937",
+      "srcText": "두꺼비가 산비탈을 기어 내려가자, 멀리서 둘이 머리를 모으고 앉아 있는 게 보였어. \"너희, 뭐 하는 거니?\" 두꺼비는 눈을 꿈적거리며 물었어. \"혹시 떡시루 굴러 내려오는 거 못 보았니?\" \"그거? 나무 밑둥치에 걸려 있어서 내가 다 먹었지.\"",
+      "srcPage": 24,
+      "srcSentenceEA": 5,
+      "srcWordEA": 37
+    },
+    {
+      "srcTextID": "95938",
+      "srcText": "\"참, 배고프면 이거라도 떼어먹어.\" 두꺼비는 둘 앞에 떡을 눌러 붙인 등을 돌려댔어. 등에는 마른 떡이 두툴두툴 붙어 있었어.",
+      "srcPage": 25,
+      "srcSentenceEA": 3,
+      "srcWordEA": 20
+    },
+    {
+      "srcTextID": "95939",
+      "srcText": "그때부터 두꺼비 등은 두툴두툴해졌어. 그렇게도 먹고 싶었던 떡을 못 먹은 호랑이는 분을 참지 못해 펄펄 뛰다가 사나워진 거고 말이야. 토끼는 이리저리 깡충깡충 뛰어다녀 방정맞아진 거래.",
+      "srcPage": 26,
+      "srcSentenceEA": 3,
+      "srcWordEA": 27
+    }
+  ]
+}
