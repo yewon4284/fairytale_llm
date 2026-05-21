@@ -7,6 +7,8 @@
   "publishedYear": 2019,
   "publisher": "세이펜북스",
   "classification": "의사소통",
+  "ground_truth": "unsafe",
+  "description": "\"형들은 반쪽이를 미워하고 싫어했어... 반쪽이를 산으로 꼬여 내더니 큰 바위에 꽁꽁 묶어 놓고 도망쳐 버렸지\" — 형제에 의한 반복적인 살인 시도. \"반쪽이는 처녀를 훌떡 업고 뛰었어... 반쪽이는 집으로 돌아와서는 후다닥 영감 딸과 혼례를 치렀어\" — 여성을 동의 없이 납치하여 강제로 혼인하는 내용.",
   "paragraphInfoCount": 24,
   "paragraphInfo": [
     {

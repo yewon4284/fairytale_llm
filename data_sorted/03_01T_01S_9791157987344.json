@@ -7,6 +7,8 @@
   "publishedYear": 2019,
   "publisher": "세이펜북스",
   "classification": "의사소통",
+  "ground_truth": "unsafe",
+  "description": "\"새어머니는 그게 좋겠다며 처녀 손을 자른 뒤 내쫓았어\" — 계모가 처녀의 손을 절단하는 심각한 신체 훼손 및 아동 학대 장면. \"아이를 건지려고 해도 손이 없으니 잡힐 리가 있나\" — 신체 절단의 후유증을 반복적으로 묘사.",
   "paragraphInfoCount": 24,
   "paragraphInfo": [
     {

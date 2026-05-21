@@ -7,6 +7,8 @@
   "publishedYear": 2019,
   "publisher": "세이펜북스",
   "classification": "의사소통",
+  "ground_truth": "unsafe",
+  "description": "\"새가 어머니가 장에서 돌아오기를 기다렸다가 냉큼 잡아먹고 가 버렸어\" — 어머니가 괴물 새에게 잡아먹히는 장면. \"꽁지 닷 발 주둥이 닷 발 새는... 새까맣게 타 죽었어\" — 살아 있는 생물을 가마솥에 넣어 불에 태워 죽이는 장면.",
   "paragraphInfoCount": 18,
   "paragraphInfo": [
     {

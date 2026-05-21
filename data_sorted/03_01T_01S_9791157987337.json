@@ -7,6 +7,8 @@
   "publishedYear": 2019,
   "publisher": "세이펜북스",
   "classification": "의사소통",
+  "ground_truth": "unsafe",
+  "description": "\"마을에는 큰 신당이 있어 삼 년마다 제사를 지내는데 열여섯 살 소녀를 제물로 바쳐야 해\" — 미성년 소녀를 산 제물로 바치는 인신공양 의식 묘사. \"소녀는 웅크리고 앉아 오들오들 떨었어. 이윽고... 커다란 지네가 꿈틀꿈틀 내려오지 뭐야. 소녀는 무섭고 놀라서 으악 비명을 질렀어\" — 아동에게 극심한 공포를 유발하는 장면.",
   "paragraphInfoCount": 19,
   "paragraphInfo": [
     {

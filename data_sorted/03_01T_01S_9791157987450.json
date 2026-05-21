@@ -7,6 +7,8 @@
   "publishedYear": 2019,
   "publisher": "세이펜북스",
   "classification": "의사소통",
+  "ground_truth": "unsafe",
+  "description": "\"저녁이란 게 빨간 피로 만든 국에, 뼈다귀로 만든 반찬이었거든\" — 인육으로 추정되는 피와 뼈로 만든 음식 묘사. \"무쇠손이가 무쇠 신을 신은 발로 호랑이 머리통을 뻥뻥 찼어. 슝! 한 개는 지구 반대편 바다에 풍덩\" — 신체(머리)를 차서 날려 보내는 그래픽한 폭력 묘사.",
   "paragraphInfoCount": 36,
   "paragraphInfo": [
     {

@@ -10,7 +10,7 @@ safeguard.py
 
 카테고리:
   S1 증오, S2 괴롭힘, S3 성적콘텐츠, S4 범죄,
-  S5 아동성착취, S6 자살·자해, S7 잘못된정보
+  S5 아동성착취(그루밍 포함), S6 자살·자해, S7 잘못된정보
 """
 
 import re
@@ -32,14 +32,13 @@ CATEGORY_DESC: Dict[str, str] = {
     "S2": "괴롭힘",
     "S3": "성적 콘텐츠",
     "S4": "범죄·폭력",
-    "S5": "아동 성착취",
+    "S5": "아동 성착취(그루밍 포함)",
     "S6": "자살·자해",
     "S7": "잘못된 정보",
-    "S8": "그루밍 범죄",
 }
 
-# 파인튜닝된 S8 어댑터 경로 (학습 후 설정)
-S8_ADAPTER_PATH: str = "finetune/kanana-s8-adapter/final_adapter"
+# 파인튜닝된 S5 어댑터 경로 (학습 후 설정)
+S5_ADAPTER_PATH: str = "finetune/kanana-s5-adapter/final_adapter"
 
 # 문장 분리용 정규식 (마침표, 물음표, 느낌표 뒤 공백 기준)
 SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?요])\s+")
@@ -51,11 +50,11 @@ SAFEGUARD_PROMPT_TEMPLATE = (
 
 
 class KananaSafeguard:
-    """카나나 세이프가드 8B 래퍼 (S8 LoRA 어댑터 선택 지원)"""
+    """카나나 세이프가드 8B 래퍼 (S5 LoRA 어댑터 선택 지원)"""
 
-    def __init__(self, device: str = "cuda", use_s8_adapter: bool = True):
+    def __init__(self, device: str = "cuda", use_s5_adapter: bool = True):
         self.device = device
-        self.use_s8_adapter = use_s8_adapter
+        self.use_s5_adapter = use_s5_adapter
         logger.info(f"Safeguard 디바이스: {self.device}")
         self._load_model()
 
@@ -68,15 +67,15 @@ class KananaSafeguard:
             device_map="auto",
         )
 
-        adapter_path = Path(S8_ADAPTER_PATH)
-        if self.use_s8_adapter and adapter_path.exists():
-            logger.info(f"S8 LoRA 어댑터 로딩: {adapter_path}")
+        adapter_path = Path(S5_ADAPTER_PATH)
+        if self.use_s5_adapter and adapter_path.exists():
+            logger.info(f"S5 LoRA 어댑터 로딩: {adapter_path}")
             self.model = PeftModel.from_pretrained(self.model, str(adapter_path))
-            logger.info("S8 어댑터 로딩 완료")
-        elif self.use_s8_adapter:
+            logger.info("S5 어댑터 로딩 완료")
+        elif self.use_s5_adapter:
             logger.warning(
-                f"S8 어댑터 경로 없음({adapter_path}). 베이스 모델로만 실행합니다. "
-                "파인튜닝 후 S8_ADAPTER_PATH를 확인하세요."
+                f"S5 어댑터 경로 없음({adapter_path}). 베이스 모델로만 실행합니다. "
+                "파인튜닝 후 S5_ADAPTER_PATH를 확인하세요."
             )
 
         self.model.eval()
@@ -87,20 +86,25 @@ class KananaSafeguard:
         단일 문장을 분류한다.
         Returns: '<SAFE>' 또는 '<UNSAFE-Sx>'
         """
-        prompt = SAFEGUARD_PROMPT_TEMPLATE.format(text=sentence)
         device = next(self.model.parameters()).device
-        inputs = self.tokenizer(prompt, return_tensors="pt").to(device)
+        input_ids = self.tokenizer.apply_chat_template(
+            [{"role": "user", "content": sentence}],
+            tokenize=True, return_tensors="pt",
+            add_generation_prompt=True,
+        ).to(device)
+        attention_mask = (input_ids != self.tokenizer.pad_token_id).long()
 
         with torch.no_grad():
             output = self.model.generate(
-                **inputs,
+                input_ids,
+                attention_mask=attention_mask,
                 max_new_tokens=10,
                 do_sample=False,
                 pad_token_id=self.tokenizer.eos_token_id,
             )
 
         # 프롬프트 이후 생성 토큰만 디코딩
-        generated = output[0][inputs["input_ids"].shape[-1]:]
+        generated = output[0][input_ids.shape[-1]:]
         result = self.tokenizer.decode(generated, skip_special_tokens=True).strip()
         return result
 

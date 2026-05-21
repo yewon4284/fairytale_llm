@@ -7,6 +7,8 @@
   "publishedYear": 2019,
   "publisher": "세이펜북스",
   "classification": "의사소통",
+  "ground_truth": "unsafe",
+  "description": "\"장글대는... 얼른 똥을 뿌지직 싸서 밥그릇에 담아 놓았지\" — 오물을 타인의 음식에 몰래 담는 행위 묘사. \"주인은 저 죽을 줄 모르고 바다로 풍덩 뛰어들었어. 그 뒤로 아무도 주인을 보지 못했지\" — 주인의 죽음을 유도하는 간접 살인 장면.",
   "paragraphInfoCount": 19,
   "paragraphInfo": [
     {

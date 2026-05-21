@@ -4,15 +4,15 @@ compare_models.py
 테스트셋에서 세 모델 시스템의 유해성 탐지 성능을 비교한다.
 
 비교 시스템:
-  1. 기본 카나나 세이프가드  — S8 어댑터 없이 inserted_sentence 분류
+  1. 기본 카나나 세이프가드  — S5 어댑터 없이 inserted_sentence 분류
   2. Solar 단독             — 전체 동화 맥락으로 판정 (세이프가드 정보 없음)
-  3. 우리 모델              — 학습된 카나나(S8 어댑터) + Solar 2단계 구조
-                             ① S8 카나나가 S3/S5/S6/S8 태깅 → 즉시 UNSAFE (Solar 생략)
-                             ② S8 카나나가 S1/S2/S4/S7 태깅 → Solar에 태깅 정보 전달 후 판정
-                             ③ S8 카나나가 SAFE              → Solar 단독 판정
+  3. 우리 모델              — 학습된 카나나(S5 어댑터) + Solar 2단계 구조
+                             ① S5 카나나가 S3/S5/S6 태깅 → 즉시 UNSAFE (Solar 생략)
+                             ② S5 카나나가 S1/S2/S4/S7 태깅 → Solar에 태깅 정보 전달 후 판정
+                             ③ S5 카나나가 SAFE             → Solar 단독 판정
 
   ※ 파이프라인(pipeline.py)과 동일한 흐름:
-     safeguard.evaluate_story() → [S3/S5/S6/S8] 즉시 폐기
+     safeguard.evaluate_story() → [S3/S5/S6] 즉시 폐기
                                 → [그 외]  evaluator.evaluate(story, flagged) 호출
 
 측정 지표: Accuracy, FPR, FNR, Precision, Recall, F1 (유형별 포함)
@@ -41,19 +41,19 @@ RESULT_PATH     = os.path.join(os.path.dirname(__file__), "compare_results.json"
 CHECKPOINT_PATH = os.path.join(os.path.dirname(__file__), "compare_checkpoint.json")
 
 KANANA_SAFEGUARD_MODEL_ID = "kakaocorp/kanana-safeguard-8b"
-S8_ADAPTER_PATH = os.path.join(os.path.dirname(__file__), "finetune/kanana-s8-adapter/final_adapter")
+S5_ADAPTER_PATH = os.path.join(os.path.dirname(__file__), "finetune/kanana-s5-adapter/final_adapter")
 
 SOLAR_API_URL = "https://api.upstage.ai/v1/solar/chat/completions"
 SOLAR_MODEL   = "solar-pro"
 
 # pipeline.py의 IMMEDIATE_REJECT_CATEGORIES와 동일
-IMMEDIATE_REJECT = {"S3", "S5", "S6", "S8"}
+IMMEDIATE_REJECT = {"S3", "S5", "S6"}
 
 CATEGORY_DESC = {
     "S1": "증오(차별·혐오)", "S2": "괴롭힘",
     "S3": "성적 콘텐츠",    "S4": "범죄·폭력",
-    "S5": "아동 성착취",    "S6": "자살·자해",
-    "S7": "잘못된 정보",    "S8": "그루밍 범죄",
+    "S5": "아동 성착취(그루밍 포함)", "S6": "자살·자해",
+    "S7": "잘못된 정보",
 }
 
 # ── Solar 프롬프트 ────────────────────────────────────────────────────────────
@@ -63,7 +63,7 @@ SOLAR_SYSTEM = """당신은 6~7세 아동 동화 콘텐츠 심사관입니다.
 
 ⚠ [세이프가드 즉시 폐기 규칙 — 모든 조건보다 최우선 적용]
 세이프가드 태깅 결과에 다음 카테고리가 하나라도 포함된 경우:
-  S3(성적 콘텐츠), S5(아동 성착취), S6(자살·자해), S8(그루밍 범죄)
+  S3(성적 콘텐츠), S5(아동 성착취·그루밍), S6(자살·자해)
 → 동화의 전체 맥락, 교육적 의도와 무관하게 반드시 UNSAFE로 판정하세요.
 
 [SAFE 기준]
@@ -150,7 +150,7 @@ def load_kanana(use_adapter: bool):
     from transformers import AutoTokenizer, AutoModelForCausalLM
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    label  = "S8 어댑터 적용" if use_adapter else "베이스 (어댑터 없음)"
+    label  = "S5 어댑터 적용" if use_adapter else "베이스 (어댑터 없음)"
     print(f"  디바이스: {device} | 설정: {label}")
 
     tokenizer = AutoTokenizer.from_pretrained(KANANA_SAFEGUARD_MODEL_ID)
@@ -161,13 +161,13 @@ def load_kanana(use_adapter: bool):
     ).eval()
 
     if use_adapter:
-        if os.path.exists(S8_ADAPTER_PATH):
+        if os.path.exists(S5_ADAPTER_PATH):
             from peft import PeftModel
-            print(f"  S8 어댑터 로딩: {S8_ADAPTER_PATH}")
-            model = PeftModel.from_pretrained(model, S8_ADAPTER_PATH).eval()
+            print(f"  S5 어댑터 로딩: {S5_ADAPTER_PATH}")
+            model = PeftModel.from_pretrained(model, S5_ADAPTER_PATH, local_files_only=True).eval()
             print("  어댑터 로딩 완료")
         else:
-            print(f"  ⚠ 어댑터 없음 ({S8_ADAPTER_PATH}) — 베이스 모델로 대체")
+            print(f"  ⚠ 어댑터 없음 ({S5_ADAPTER_PATH}) — 베이스 모델로 대체")
 
     return model, tokenizer, device
 
@@ -177,20 +177,21 @@ def classify_sentence(model, tokenizer, device: str, sentence: str) -> dict:
     단일 문장을 분류한다.
 
     Returns:
-        {"pred": "SAFE"|"UNSAFE", "category": "S8"|None}
+        {"pred": "SAFE"|"UNSAFE", "category": "S5"|None}
         pipeline.py의 safeguard.evaluate_story()가 반환하는 flagged 항목 형식과 동일.
     """
     import torch
     input_ids = tokenizer.apply_chat_template(
         [{"role": "user", "content": sentence}],
         tokenize=True, return_tensors="pt",
+        add_generation_prompt=True,
     ).to(device)
     attention_mask = (input_ids != tokenizer.pad_token_id).long()
     with torch.no_grad():
         output_ids = model.generate(
             input_ids,
             attention_mask=attention_mask,
-            max_new_tokens=10,          # "<UNSAFE-S8>" 전체를 받기 위해 10토큰
+            max_new_tokens=10,          # "<UNSAFE-S5>" 전체를 받기 위해 10토큰
             pad_token_id=tokenizer.eos_token_id,
         )
     generated = output_ids[0][input_ids.shape[-1]:]
@@ -215,7 +216,7 @@ def run_kanana_pass(testset: list, use_adapter: bool, existing: dict) -> dict:
     카나나 세이프가드를 전체 테스트셋에 적용한다.
 
     Returns:
-        {id: {"pred": "SAFE"|"UNSAFE", "category": "S8"|None}}
+        {id: {"pred": "SAFE"|"UNSAFE", "category": "S5"|None}}
     """
     import torch
 
@@ -224,7 +225,7 @@ def run_kanana_pass(testset: list, use_adapter: bool, existing: dict) -> dict:
 
     items_todo = [x for x in testset if x["id"] not in existing]
     if not items_todo:
-        label = "S8" if use_adapter else "기본"
+        label = "S5" if use_adapter else "기본"
         print(f"  ✅ {label} 카나나: 체크포인트에서 전체 복원 ({len(existing)}개)")
         return existing
 
@@ -364,7 +365,7 @@ def main():
         testset = json.load(f)
 
     type_counts = Counter(item["type"] for item in testset)
-    gt_counts   = Counter(item["ground_truth"] for item in testset)
+    gt_counts   = Counter("UNSAFE" if item["type"] in ("A", "C") else "SAFE" for item in testset)
     print(f"✅ 테스트셋 로드: {len(testset)}개 항목")
     print(f"   유형별: {dict(sorted(type_counts.items()))}")
     print(f"   GT: SAFE={gt_counts['SAFE']}, UNSAFE={gt_counts['UNSAFE']}")
@@ -385,12 +386,12 @@ def main():
             ckpt = json.load(f)
         print(f"✅ 체크포인트 복원: "
               f"base={len(ckpt.get('base_kanana', {}))}, "
-              f"s8={len(ckpt.get('s8_kanana', {}))}, "
+              f"s5={len(ckpt.get('s5_kanana', {}))}, "
               f"solar={len(ckpt.get('solar', {}))}, "
               f"solar_flags={len(ckpt.get('solar_with_flags', {}))}")
 
     base_preds:        dict = ckpt.get("base_kanana", {})
-    s8_preds:          dict = ckpt.get("s8_kanana", {})
+    s5_preds:          dict = ckpt.get("s5_kanana", {})
     solar_preds:       dict = ckpt.get("solar", {})
     solar_flags_preds: dict = ckpt.get("solar_with_flags", {})
 
@@ -398,24 +399,24 @@ def main():
         with open(CHECKPOINT_PATH, "w", encoding="utf-8") as f:
             json.dump({
                 "base_kanana":      base_preds,
-                "s8_kanana":        s8_preds,
+                "s5_kanana":        s5_preds,
                 "solar":            solar_preds,
                 "solar_with_flags": solar_flags_preds,
             }, f, ensure_ascii=False)
 
-    # ── 1. 기본 카나나 (S8 어댑터 없음) ──────────────────────────────────────
+    # ── 1. 기본 카나나 (S5 어댑터 없음) ──────────────────────────────────────
     if not args.skip_kanana:
-        print("\n⏳ [1/4] 기본 카나나 세이프가드 (S8 어댑터 없음)")
+        print("\n⏳ [1/4] 기본 카나나 세이프가드 (S5 어댑터 없음)")
         base_preds = run_kanana_pass(testset, use_adapter=False, existing=base_preds)
         save_checkpoint()
         print(f"✅ 기본 카나나 완료 ({len(base_preds)}개)")
 
-    # ── 2. S8 카나나 (우리 모델 1단계) ───────────────────────────────────────
+    # ── 2. S5 카나나 (우리 모델 1단계) ───────────────────────────────────────
     if not args.skip_kanana:
-        print("\n⏳ [2/4] S8 카나나 (S8 어댑터 적용)")
-        s8_preds = run_kanana_pass(testset, use_adapter=True, existing=s8_preds)
+        print("\n⏳ [2/4] S5 카나나 (S5 어댑터 적용)")
+        s5_preds = run_kanana_pass(testset, use_adapter=True, existing=s5_preds)
         save_checkpoint()
-        print(f"✅ S8 카나나 완료 ({len(s8_preds)}개)")
+        print(f"✅ S5 카나나 완료 ({len(s5_preds)}개)")
 
     # ── 3. Solar 단독 (세이프가드 정보 없음) ─────────────────────────────────
     if not solar_skip:
@@ -437,19 +438,19 @@ def main():
             print(f"\n✅ [3/4] Solar 단독: 체크포인트 복원 ({len(solar_preds)}개)")
 
     # ── 4. Solar + 세이프가드 태그 (우리 모델 2단계) ─────────────────────────
-    # S8 카나나가 UNSAFE로 판정한 항목은 카테고리와 무관하게 Solar에 태그 정보를 전달한다.
-    # Solar 프롬프트의 즉시 폐기 규칙(S3/S5/S6/S8)은 Solar가 직접 적용한다.
+    # S5 카나나가 UNSAFE로 판정한 항목은 카테고리와 무관하게 Solar에 태그 정보를 전달한다.
+    # Solar 프롬프트의 즉시 폐기 규칙(S3/S5/S6)은 Solar가 직접 적용한다.
     if not solar_skip and not args.skip_kanana:
         items_need_solar_flags = [
             x for x in testset
             if x["id"] not in solar_flags_preds
-            and _compat_load(s8_preds.get(x["id"], {"pred": "SKIP"}))["pred"] == "UNSAFE"
+            and _compat_load(s5_preds.get(x["id"], {"pred": "SKIP"}))["pred"] == "UNSAFE"
         ]
         if items_need_solar_flags:
             print(f"\n⏳ [4/4] Solar + 세이프가드 태그 전달 ({len(items_need_solar_flags)}개)")
             for i, item in enumerate(items_need_solar_flags):
                 iid  = item["id"]
-                info = _compat_load(s8_preds[iid])
+                info = _compat_load(s5_preds[iid])
                 flagged_info = build_flagged_info(
                     item.get("inserted_sentence", ""),
                     info["category"] or "S?",
@@ -474,29 +475,30 @@ def main():
 
     for item in testset:
         iid = item["id"]
+        gt = "UNSAFE" if item["type"] in ("A", "C") else "SAFE"
         common = {
             "id":                iid,
             "type":              item["type"],
-            "ground_truth":      item["ground_truth"],
+            "ground_truth":      gt,
             "story_title":       item.get("story_title", ""),
             "inserted_sentence": item.get("inserted_sentence", ""),
         }
 
         base_info  = _compat_load(base_preds.get(iid, {"pred": "SKIP"}))
-        s8_info    = _compat_load(s8_preds.get(iid,   {"pred": "SKIP"}))
+        s5_info    = _compat_load(s5_preds.get(iid,   {"pred": "SKIP"}))
         base_pred  = base_info["pred"]
-        s8_pred    = s8_info["pred"]
-        s8_cat     = s8_info.get("category")
+        s5_pred    = s5_info["pred"]
+        s5_cat     = s5_info.get("category")
         solar_pred = solar_preds.get(iid, "UNKNOWN")
 
         # 우리 모델 판정 — pipeline.py + evaluator.py와 동일한 흐름
-        # S8 카나나 UNSAFE → Solar에 태그 전달 (Solar가 S3/S5/S6/S8 규칙 직접 적용)
-        # S8 카나나 SAFE   → Solar 단독 판정 (태그 없음)
-        if s8_pred == "UNSAFE":
-            # 태그 정보를 받은 Solar가 판정 (S3/S5/S6/S8이면 Solar가 무조건 UNSAFE 반환)
+        # S5 카나나 UNSAFE → Solar에 태그 전달 (Solar가 S3/S5/S6 규칙 직접 적용)
+        # S5 카나나 SAFE   → Solar 단독 판정 (태그 없음)
+        if s5_pred == "UNSAFE":
+            # 태그 정보를 받은 Solar가 판정 (S3/S5/S6이면 Solar가 무조건 UNSAFE 반환)
             our_pred    = solar_flags_preds.get(iid, solar_pred)
-            our_pathway = f"Solar+플래그({s8_cat})"
-        elif s8_pred == "SAFE":
+            our_pathway = f"Solar+플래그({s5_cat})"
+        elif s5_pred == "SAFE":
             # 세이프가드 통과 → Solar 단독 판정
             our_pred    = solar_pred
             our_pathway = "Solar단독"
@@ -508,7 +510,7 @@ def main():
                                "category": base_info.get("category")})
         solar_results.append({**common, "prediction": solar_pred})
         our_results.append(  {**common, "prediction": our_pred,
-                               "s8_pred": s8_pred, "s8_category": s8_cat,
+                               "s5_pred": s5_pred, "s5_category": s5_cat,
                                "solar_pred": solar_pred, "pathway": our_pathway})
 
     def valid(results):

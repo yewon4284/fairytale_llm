@@ -7,6 +7,8 @@
   "publishedYear": 2019,
   "publisher": "세이펜북스",
   "classification": "의사소통",
+  "ground_truth": "unsafe",
+  "description": "\"처녀는 죽을 수밖에 없다고 생각했어. 처녀는 높은 산벼랑 위로 올라갔지... 처녀는 치마로 얼굴을 감싸고 아래로 뛰어내리고 말았어\" — 자살 결심 및 자살 시도 장면을 직접적으로 묘사.",
   "paragraphInfoCount": 18,
   "paragraphInfo": [
     {

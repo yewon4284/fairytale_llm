@@ -1,13 +1,13 @@
 """
-train_s8.py
-kanana-safeguard-8b QLoRA 파인튜닝 — S8(그루밍 범죄) 카테고리 추가
+train_s5.py
+kanana-safeguard-8b QLoRA 파인튜닝 — S5(아동 성착취) 카테고리 강화
 
 필요 패키지:
   pip install peft trl bitsandbytes datasets accelerate
 
 사용법:
-  python finetune/train_s8.py
-  python finetune/train_s8.py --dataset finetune/s8_dataset.json --output finetune/kanana-s8-adapter
+  python finetune/train_s5.py
+  python finetune/train_s5.py --dataset finetune/s5_dataset.json --output finetune/kanana-s5-adapter
 """
 
 import argparse
@@ -39,7 +39,7 @@ def load_dataset(path: str, val_ratio: float = 0.1):
     for item in raw:
         text = item["text"].strip()
         label = item["label"].strip()
-        formatted = f"<{label}>"          # <SAFE> or <UNSAFE-S8>
+        formatted = f"<{label}>"          # <SAFE> or <UNSAFE-S5>
         full = PROMPT_TEMPLATE.format(text=text) + formatted
         records.append({"text": full})
 
@@ -134,15 +134,17 @@ def main(args):
     trainer.train()
 
     adapter_path = Path(args.output) / "final_adapter"
-    trainer.model.save_pretrained(adapter_path)
-    tokenizer.save_pretrained(adapter_path)
+    adapter_path.mkdir(parents=True, exist_ok=True)
+    # trainer.model 대신 원본 peft model로 저장 (TRL 래핑 우회)
+    model.save_pretrained(str(adapter_path))
+    tokenizer.save_pretrained(str(adapter_path))
     print(f"\n어댑터 저장 완료: {adapter_path}")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset", default="finetune/s8_dataset.json")
-    parser.add_argument("--output", default="finetune/kanana-s8-adapter")
+    parser.add_argument("--dataset", default="finetune/s5_dataset.json")
+    parser.add_argument("--output", default="finetune/kanana-s5-adapter")
     parser.add_argument("--epochs", type=int, default=5)
     parser.add_argument("--batch_size", type=int, default=2)
     parser.add_argument("--val_ratio", type=float, default=0.1)

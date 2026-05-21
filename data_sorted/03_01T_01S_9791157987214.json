@@ -7,6 +7,8 @@
   "publishedYear": 2019,
   "publisher": "세이펜북스",
   "classification": "의사소통",
+  "ground_truth": "unsafe",
+  "description": "\"팥중이가 뒤에서 발로 탁 차서 콩중이는 그만 물에 빠져 죽고 말았어\" — 의붓자매가 주인공을 물에 빠뜨려 살해하는 장면. \"새엄마가... 때리고 야단치고 밥도 굶겼어\" — 아동 학대 및 방임 묘사.",
   "paragraphInfoCount": 26,
   "paragraphInfo": [
     {

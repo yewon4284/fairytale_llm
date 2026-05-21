@@ -7,6 +7,7 @@
   "publishedYear": 2019,
   "publisher": "세이펜북스",
   "classification": "의사소통",
+  "ground_truth": "safe",
   "paragraphInfoCount": 20,
   "paragraphInfo": [
     {

@@ -7,6 +7,8 @@
   "publishedYear": 2019,
   "publisher": "세이펜북스",
   "classification": "의사소통",
+  "ground_truth": "unsafe",
+  "description": "\"하루는 이 처녀가 뒷산 밤나무 밑에서 오줌을 누었지. 그런데 무엇이 아래를 따끔하게 찌르더니, 그날부터 배가 불러오네\" — 비동의 초자연적 수단에 의한 임신 묘사로, 아동에게 부적절한 성적 함의를 담고 있음.",
   "paragraphInfoCount": 18,
   "paragraphInfo": [
     {
