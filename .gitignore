@@ -13,3 +13,7 @@ test_data/
 test_data/
 venv/
 .venv/
+__pycache__/
+*.pyc
+*.pyo
+outputs/
