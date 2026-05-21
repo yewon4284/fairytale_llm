@@ -1,3 +1,15 @@
 .env
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+*.log
+data/
+*.safetensors
+*.bin
+*.pt
+*.pth
+test_data/
+test_data/
 venv/
 .venv/

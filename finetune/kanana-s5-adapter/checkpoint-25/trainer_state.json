@@ -1,0 +1,55 @@
+{
+  "best_metric": 0.0005582340527325869,
+  "best_model_checkpoint": "finetune/kanana-s5-adapter/checkpoint-25",
+  "epoch": 1.0,
+  "eval_steps": 500,
+  "global_step": 25,
+  "is_hyper_param_search": false,
+  "is_local_process_zero": true,
+  "is_world_process_zero": true,
+  "log_history": [
+    {
+      "epoch": 0.41237113402061853,
+      "grad_norm": 16.85062026977539,
+      "learning_rate": 0.00019996203070249516,
+      "loss": 11.0607,
+      "step": 10
+    },
+    {
+      "epoch": 0.8247422680412371,
+      "grad_norm": 44.114349365234375,
+      "learning_rate": 0.00019544050018795075,
+      "loss": 0.2481,
+      "step": 20
+    },
+    {
+      "epoch": 1.0,
+      "eval_loss": 0.0005582340527325869,
+      "eval_runtime": 1.9384,
+      "eval_samples_per_second": 10.834,
+      "eval_steps_per_second": 5.675,
+      "step": 25
+    }
+  ],
+  "logging_steps": 10,
+  "max_steps": 120,
+  "num_input_tokens_seen": 0,
+  "num_train_epochs": 5,
+  "save_steps": 500,
+  "stateful_callbacks": {
+    "TrainerControl": {
+      "args": {
+        "should_epoch_stop": false,
+        "should_evaluate": false,
+        "should_log": false,
+        "should_save": true,
+        "should_training_stop": false
+      },
+      "attributes": {}
+    }
+  },
+  "total_flos": 396846214840320.0,
+  "train_batch_size": 2,
+  "trial_name": null,
+  "trial_params": null
+}
