@@ -161,15 +161,36 @@
 <div id="root"></div>
 <script type="text/babel">
 const { useState, useEffect, useRef } = React;
-const API = 'http://localhost:8000';
+const API = window.location.origin;
 
-function buildPages(story, images) {
+function buildPages(story, images, pageInfo) {
   const paras = story.split('\n').filter(p => p.trim());
+
+  // page_info가 있으면 Solar가 분할한 기승전결 구조 사용
+  if (pageInfo && pageInfo.length > 0) {
+    return pageInfo.map((info, i) => {
+      // paragraphs는 1-based 인덱스
+      const indices = (info.paragraphs || []).map(n => n - 1);
+      const pageParagraphs = indices
+        .filter(idx => idx >= 0 && idx < paras.length)
+        .map(idx => paras[idx]);
+      return {
+        paragraphs: pageParagraphs.length > 0 ? pageParagraphs : [paras[i] || ''],
+        image: info.image || images[i] || null,
+        section: info.section || '',
+        summary: info.summary_ko || '',
+      };
+    });
+  }
+
+  // page_info 없으면 이미지 수 기준 균등 분할
   const count = images.length > 0 ? images.length : Math.ceil(paras.length / 3);
   const perPage = Math.ceil(paras.length / count);
   return Array.from({ length: count }, (_, i) => ({
     paragraphs: paras.slice(i * perPage, (i + 1) * perPage),
     image: images[i] || null,
+    section: '',
+    summary: '',
   }));
 }
 
@@ -269,7 +290,7 @@ function Loading({ jobId, onDone, onError }) {
 
 /* 뷰어 */
 function BookViewer({ result, onBack }) {
-  const pages = buildPages(result.story, result.images);
+  const pages = buildPages(result.story, result.images, result.page_info);
   const [idx, setIdx] = useState(0);
   const [imgErr, setImgErr] = useState(false);
 
