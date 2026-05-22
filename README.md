@@ -180,6 +180,17 @@ python evaluate_testset.py --skip-safeguard
 
 ---
 
+## 데이터셋 출처
+
+**AI Hub — 동화 줄거리 생성 데이터** ([링크](https://aihub.or.kr/aihubdata/data/view.do?dataSetSn=71695))
+
+- 경로: `015.동화 줄거리 생성 데이터 > 3.개방데이터 > 1.데이터 > Training > 01.원천데이터`
+- 사용 분류: **유아** (`readAge: "유아"`) 동화만 필터링하여 사용
+- 분류 기준: `classification: "의사소통"` 동화만 추출
+- 파일 형식: JSON (`03_01T_01S_*.json`)
+
+---
+
 ## VRAM 사용량
 
 | 모델 | 파라미터 | 예상 VRAM (fp16) |
