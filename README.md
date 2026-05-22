@@ -18,7 +18,7 @@ fairytale_llm/
 ├── .env.example          # 환경변수 예시
 └── requirements.txt
 ```
-
+<img width="820" height="700" alt="Image" src="https://github.com/user-attachments/assets/e0e51a90-b53b-45f1-820f-dafc8d7eeefd" />
 ---
 
 ## 설치
