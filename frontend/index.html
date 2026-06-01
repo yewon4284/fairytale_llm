@@ -303,7 +303,6 @@ function BookViewer({ result, onBack }) {
   return (
     <div className="viewer-wrap">
       <div className="top-bar">
-        <button className="btn-nav" onClick={onBack}>← 처음으로</button>
         <button className="btn-nav" onClick={() => setIdx(i => i - 1)} disabled={idx === 0}>◀ 이전</button>
         <span className="page-label">{idx + 1} / {pages.length}</span>
         <button className="btn-nav" onClick={() => setIdx(i => i + 1)} disabled={idx === pages.length - 1}>다음 ▶</button>
