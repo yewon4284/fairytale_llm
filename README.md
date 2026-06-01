@@ -10,26 +10,20 @@
 fairytale_llm/
 ├── src/
 │   ├── __init__.py
-│   ├── generator.py        # kanana-1.5-8b 동화 생성
-│   ├── safeguard.py        # kanana-safeguard-8b 1차 평가 (S5 LoRA 파인튜닝 포함)
-│   ├── evaluator.py        # Solar Pro 3 — 동화 기획 + 2차 평가 + 수정 지시 생성
-│   ├── pipeline.py         # 전체 파이프라인 오케스트레이터
-│   └── data_loader.py      # 동화 데이터셋 로더 (퓨샷 고정 사용)
+│   ├── generator.py              # kanana-1.5-8b 동화 생성
+│   ├── safeguard.py              # kanana-safeguard-8b 1차 평가 (S5 LoRA 파인튜닝 포함)
+│   ├── evaluator.py              # Solar Pro 3 — 동화 기획 + 2차 평가 + 수정 지시 생성
+│   ├── pipeline.py               # 전체 파이프라인 오케스트레이터
+│   └── data_loader.py            # 동화 데이터셋 로더 (퓨샷 고정 사용)
 ├── finetune/
-│   └── kanana-s5-adapter/  # S5(그루밍) 탐지 LoRA 어댑터
-├── data_sorted/            # 아동 동화 JSON 데이터셋 (정렬됨)
-├── test_data/
-│   ├── testset.json        # 휴먼 어노테이션 평가 테스트셋 (61편)
-│   └── eval_results.json   # 성능 평가 결과
-├── outputs/                # 생성 동화 및 삽화 저장 (자동 생성)
-├── frontend/               # 웹 UI (React)
-├── main.py                 # CLI 진입점
-├── server.py               # FastAPI 서버 (웹 서비스용)
-├── evaluate_testset.py     # 성능 평가 스크립트
-├── image_generator.py      # Pollinations API 삽화 생성
-├── .env                    # API 키 설정
-├── .env.example            # 환경변수 예시
-└── requirements.txt
+│   └── kanana-s5-adapter/        # S5(그루밍) 탐지 LoRA 어댑터
+├── data_sorted/                  # 아동 동화 JSON 데이터셋 (정렬됨)
+├── frontend/
+│   └── index.html                # 웹 UI (React, 단일 파일)
+├── main.py                       # CLI 진입점
+├── server.py                     # FastAPI 서버 (웹 서비스용)
+├── image_generator.py            # Pollinations API 삽화 생성
+└── image_generator_stability.py  # Stability AI API 삽화 생성 (대안)
 ```
 
 ---
@@ -64,14 +58,8 @@ fairytale_llm/
 # 1. 가상환경 활성화
 conda activate fairytale_llm
 
-# 2. 의존성 설치
-pip install -r requirements.txt
-
-# 3. .env 파일 설정
-cp .env.example .env
-# .env 파일에 아래 키 입력
+# 2. .env 파일 생성 후 키 입력
 # UPSTAGE_API_KEY=your_key_here
-# STABILITY_API_KEY=your_key_here  (삽화 생성용, 선택)
 ```
 
 ---
@@ -90,10 +78,6 @@ python main.py --request "편식하는 아이에게 교훈을 주는 동화를 �
 # 생성 모델 선택 (기본: 1.5-8b)
 python main.py --generator 1.5-8b
 
-# 재작성 모드 선택
-python main.py --mode kanana_rewrite   # 기본: Solar 지시 → 카나나 재생성
-python main.py --mode solar_rewrite    # Solar가 직접 수정
-
 # 빠른 테스트 (세이프가드 없이)
 python main.py --no-safeguard --request "친구와 사이좋게 지내는 동화를 써줘."
 ```
@@ -103,19 +87,6 @@ python main.py --no-safeguard --request "친구와 사이좋게 지내는 동화
 ```bash
 uvicorn server:app --host 0.0.0.0 --port 8000 --reload
 # 브라우저에서 http://<서버IP>:8000 접속
-```
-
-### 성능 평가
-
-```bash
-# 전체 평가 (세이프가드 + Solar + 2단계 비교)
-python evaluate_testset.py
-
-# 구조 확인만 (API 호출 없이)
-python evaluate_testset.py --dry-run
-
-# 세이프가드 생략 (Solar만)
-python evaluate_testset.py --skip-safeguard
 ```
 
 ---

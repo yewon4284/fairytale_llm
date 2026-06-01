@@ -5,8 +5,7 @@ LLM 기반 아동 동화 생성 시스템의 진입점.
 실행 방법:
     python main.py                     # 대화형 — 동화 생성 후 계속 여부 묻기
     python main.py --request "..."     # 요청 직접 전달 (1회 실행 후 종료)
-    python main.py --generator nano    # 비교 실험
-    python main.py --mode solar_rewrite
+    python main.py --generator nano    # 비교 실험용 (nano 모델)
 """
 
 import argparse
@@ -76,7 +75,7 @@ def load_few_shot(n: int = 2) -> str:
 def run_once(args, api_key, generator, safeguard, evaluator, few_shot_text):
     """동화 한 편을 생성·평가하고 결과를 출력한다."""
     from src.generator import check_bias
-    from src.pipeline import FairyTalePipeline, RewriteMode, print_final_result
+    from src.pipeline import FairyTalePipeline, print_final_result
 
     user_request = get_user_request(args)
 
@@ -91,7 +90,6 @@ def run_once(args, api_key, generator, safeguard, evaluator, few_shot_text):
         generator=generator,
         safeguard=safeguard,
         evaluator=evaluator,
-        rewrite_mode=RewriteMode(args.mode),
         few_shot_text=few_shot_text,
     )
 

@@ -2,26 +2,10 @@
 pipeline.py
 생성 → 1차 평가(카나나 세이프가드) → 2차 평가(Solar) → 재작성 루프를 관리한다.
 
-[재작성 모드 — RewriteMode]
-
-KANANA_REWRITE  (카나나 재생성 모드)
-  ─────────────────────────────────────────────
-  Solar가 평가 후 "무엇을 어떻게 고쳐라"는 지시(hint)를 내리고,
-  카나나가 그 hint를 반영해 동화를 처음부터 다시 생성한다.
-
-  흐름:
-    Solar → 기획 → 카나나 → 동화 생성
-        ↓ FAIL
-    Solar → 수정 지시(hint) → 카나나 → 동화 재생성 (최대 4회)
-
-  장점: 카나나의 한국어 텍스트 생성 능력 활용, 생태계 일관성 유지
-  단점: hint 해석 오류 가능성, 루프마다 카나나 추론 비용 발생
-
-  
-[실험 설계]
-  두 모드를 동일한 요청에 실행하여 결과를 비교하면
-  "카나나 재생성 vs Solar 직접 수정" 성능 차이를 정량적으로 측정할 수 있다.
-  → 논문/보고서의 Ablation Study로 활용 가능
+흐름:
+  Solar → 기획 → 카나나 → 동화 생성
+      ↓ FAIL
+  Solar → 수정 지시(hint) → 카나나 → 동화 재생성 (최대 4회)
 
 [루프 정책]
   - 최대 4회 시도
@@ -31,7 +15,6 @@ KANANA_REWRITE  (카나나 재생성 모드)
 
 import logging
 from dataclasses import dataclass, field
-from enum import Enum
 from typing import List, Optional
 
 from dotenv import load_dotenv
@@ -44,19 +27,6 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 MAX_ATTEMPTS = 4
-
-
-# ── 재작성 모드 ──────────────────────────────────────────────────────────────
-class RewriteMode(str, Enum):
-    KANANA_REWRITE = "kanana_rewrite"
-    """
-    카나나 재생성 모드 (MODE A).
-    Solar가 수정 지시(hint)를 내리고, 카나나가 hint를 반영해 동화를 재생성한다.
-    """
-
-
-DEFAULT_MODE = RewriteMode.KANANA_REWRITE
-# Solar가 수정 지시(hint)를 작성하고, 카나나 1.5 8B가 hint를 반영해 동화를 재생성
 
 
 # ── 데이터 클래스 ─────────────────────────────────────────────────────────────
@@ -75,7 +45,6 @@ class AttemptRecord:
 @dataclass
 class PipelineResult:
     user_request: str
-    rewrite_mode: str
     generator_model: str
     final_story: str
     final_plan: str
@@ -94,7 +63,6 @@ class FairyTalePipeline:
         generator     : FairyTaleGenerator 인스턴스
         safeguard     : KananaSafeguard 인스턴스
         evaluator     : SolarEvaluator 인스턴스
-        rewrite_mode  : RewriteMode.KANANA_REWRITE
         few_shot_text : 데이터셋에서 로드한 참고 동화 텍스트 (퓨샷, 없으면 빈 문자열)
     """
 
@@ -103,13 +71,11 @@ class FairyTalePipeline:
         generator: FairyTaleGenerator,
         safeguard: KananaSafeguard,
         evaluator: SolarEvaluator,
-        rewrite_mode: RewriteMode = DEFAULT_MODE,
         few_shot_text: str = "",
     ):
         self.generator = generator
         self.safeguard = safeguard
         self.evaluator = evaluator
-        self.rewrite_mode = rewrite_mode
         self.few_shot_text = few_shot_text
 
     def run(self, user_request: str) -> PipelineResult:
@@ -121,16 +87,16 @@ class FairyTalePipeline:
                 f"특정 성별(공주/왕자/아들/딸), 인종 등의 단어 없이 상황을 설명해 주세요."
             )
 
-        _print_header(user_request, self.rewrite_mode, self.generator.model_id)
+        _print_header(user_request, self.generator.model_id)
 
         records: List[AttemptRecord] = []
-        rewrite_hint = ""       # MODE A 전용: 카나나에 전달할 수정 지시
+        rewrite_hint = ""
         final_plan = ""
         final_story = ""
         passed = False
 
         for attempt in range(1, MAX_ATTEMPTS + 1):
-            _print_attempt_header(attempt, self.rewrite_mode)
+            _print_attempt_header(attempt)
 
             # ── Step 1: 동화 기획 (Solar, 1회차만) ───────────────────────────
             if attempt == 1:
@@ -139,15 +105,13 @@ class FairyTalePipeline:
                 print(final_plan)
 
             # ── Step 2: 동화 본문 생성 ────────────────────────────────────────
-            if attempt == 1 or self.rewrite_mode == RewriteMode.KANANA_REWRITE:
-                # 매 회차 카나나가 (hint 반영하여) 생성
-                print(f"\n📝 [Step 2] 카나나({self.generator.model_id.split('/')[-1]}) — 동화 생성 중...")
-                story = self.generator.generate(
-                    final_plan,
-                    rewrite_hint,
-                    few_shot_examples=self.few_shot_text,
-                )
-                generator_label = self.generator.model_id.split("/")[-1]
+            print(f"\n📝 [Step 2] 카나나({self.generator.model_id.split('/')[-1]}) — 동화 생성 중...")
+            story = self.generator.generate(
+                final_plan,
+                rewrite_hint,
+                few_shot_examples=self.few_shot_text,
+            )
+            generator_label = self.generator.model_id.split("/")[-1]
 
             final_story = story
             previous_story = story
@@ -191,10 +155,8 @@ class FairyTalePipeline:
                 break
 
             if attempt < MAX_ATTEMPTS:
-                if self.rewrite_mode == RewriteMode.KANANA_REWRITE:
-                    # MODE A: Solar가 수정 지시를 hint로 만들어 카나나에 전달
-                    rewrite_hint = self.evaluator.build_rewrite_hint(eval_result)
-                    print(f"\n🔄 수정 지시 생성 완료 → 카나나 재생성 시작 (시도 {attempt+1})")
+                rewrite_hint = self.evaluator.build_rewrite_hint(eval_result)
+                print(f"\n🔄 수정 지시 생성 완료 → 카나나 재생성 시작 (시도 {attempt+1})")
             else:
                 print(f"\n⚠ 최대 시도 횟수({MAX_ATTEMPTS}회) 초과.")
 
@@ -217,7 +179,6 @@ class FairyTalePipeline:
 
         return PipelineResult(
             user_request=user_request,
-            rewrite_mode=self.rewrite_mode.value,
             generator_model=self.generator.model_id,
             final_story=final_story,
             final_plan=final_plan,
@@ -230,22 +191,17 @@ class FairyTalePipeline:
 
 # ── 출력 헬퍼 ────────────────────────────────────────────────────────────────
 
-def _print_header(user_request: str, mode: RewriteMode, model_id: str):
-    mode_label = {
-        RewriteMode.KANANA_REWRITE: "카나나 재생성 (Solar 지시 → 카나나 재작성)",
-    }[mode]
-
+def _print_header(user_request: str, model_id: str):
     print("\n" + "=" * 70)
     print("  🌟 LLM 기반 아동 동화 생성 시스템")
     print("=" * 70)
-    print(f"  재작성 모드: {mode_label}")
     print(f"  Generator:  {model_id.split('/')[-1]}")
     print(f"  최대 시도:  {MAX_ATTEMPTS}회")
     print(f"\n📝 사용자 요청:\n  {user_request}")
     print("=" * 70)
 
 
-def _print_attempt_header(attempt: int, mode: RewriteMode):
+def _print_attempt_header(attempt: int):
     print(f"  시도 {attempt} / {MAX_ATTEMPTS}")
     print(f"{'─' * 70}")
 
@@ -256,7 +212,6 @@ def print_final_result(result: PipelineResult):
     print("  🏁 최종 결과")
     print("=" * 70)
     print(f"  상태:       {'✅ 합격' if result.passed else '❌ 불합격 (최대 시도 초과)'}")
-    print(f"  재작성 모드: {result.rewrite_mode}")
     print(f"  Generator:  {result.generator_model.split('/')[-1]}")
     print(f"  총 시도:    {result.total_attempts}회")
     print(f"  최종 선택:  시도 {result.best_attempt}번 (최고 점수)")
