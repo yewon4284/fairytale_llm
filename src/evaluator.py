@@ -529,28 +529,6 @@ class SolarEvaluator:
         previous_story: str,
         eval_result: Dict,
     ) -> str:
-        """
-        [MODE B 전용] Solar가 이전 동화를 직접 수정한 새 버전을 생성한다.
-
-        카나나에게 hint를 전달하는 MODE A와 달리,
-        Solar가 평가 결과를 직접 참고하여 동화 전문을 수정한다.
-
-        흐름:
-          Solar 평가 → fail_reasons + rewrite_instructions 확인
-          → 이전 동화 전문 + 기획서 + 수정 지시 → Solar가 새 동화 직접 작성
-
-        장점: hint 해석 오류 없음, 평가 맥락 완전 보존
-        단점: Solar API 추가 호출 비용, Solar의 한국어 동화 생성 품질이
-              카나나 대비 낮을 수 있음 (실험으로 비교 필요)
-
-        Args:
-            plan           : 1회차에 생성된 동화 기획서
-            previous_story : 직전 시도에서 생성된 동화 전문
-            eval_result    : 직전 시도의 2차 평가 결과 dict
-
-        Returns:
-            수정된 동화 본문 문자열
-        """
         scores = eval_result.get("scores", {})
         fail_reasons = eval_result.get("fail_reasons", [])
         rewrite_instructions = eval_result.get("rewrite_instructions", "")

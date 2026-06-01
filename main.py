@@ -33,7 +33,7 @@ def get_user_request(args) -> str:
         return args.request.strip()
 
     print("\n" + "=" * 70)
-    print("  🌟 LLM 기반 아동 동화 생성 시스템")
+    print("  LLM 기반 아동 동화 생성 시스템")
     print("=" * 70)
     print("\n어떤 상황의 교훈을 담은 동화를 원하시나요?")
     print("예시: '편식을 하면 좋지 않다는 교훈을 주는 동화를 써줘.'")

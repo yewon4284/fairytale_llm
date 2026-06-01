@@ -237,7 +237,7 @@ function Intro({ onGenerate }) {
         <p className="hint">⚠ 공주·왕자·아들·딸·특정 성별·인종 단어는 입력하지 마세요.</p>
         {err && <p className="err">❌ {err}</p>}
         <button className="btn-primary" onClick={submit} disabled={busy || !val.trim()}>
-          {busy ? '요청 중...' : '✨ 동화 만들기'}
+          {busy ? '요청 중...' : ' 동화 만들기'}
         </button>
       </div>
     </div>

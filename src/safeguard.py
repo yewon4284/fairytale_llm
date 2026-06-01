@@ -141,7 +141,7 @@ class KananaSafeguard:
                     "category": category,
                     "desc": desc,
                 })
-                logger.info(f"  ⚠ 요주의: [{idx+1}] {category}({desc}) — {sent[:50]}")
+                logger.info(f"  요주의: [{idx+1}] {category}({desc}) — {sent[:50]}")
 
         logger.info(
             f"1차 평가 완료 — 요주의 문장 {len(flagged)}개 / 전체 {len(sentences)}개"

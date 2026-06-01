@@ -110,7 +110,7 @@ class FairyTaleImageGenerator:
             title_ko = scene.get("scene_ko", f"장면 {i}")
             save_path = os.path.join(self.output_dir, f"scene_{i:02d}.png")
 
-            print(f"\n  🖼  [{i}/{len(scenes)}] {title_ko}")
+            print(f"\n  [{i}/{len(scenes)}] {title_ko}")
             print(f"      → {prompt}")
 
             try:

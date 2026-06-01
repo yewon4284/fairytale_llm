@@ -100,12 +100,12 @@ class FairyTalePipeline:
 
             # ── Step 1: 동화 기획 (Solar, 1회차만) ───────────────────────────
             if attempt == 1:
-                print("\n🧩 [Step 1] Solar — 동화 기획 생성 중...")
+                print("\n [Step 1] Solar — 동화 기획 생성 중...")
                 final_plan = self.evaluator.plan(user_request)
                 print(final_plan)
 
             # ── Step 2: 동화 본문 생성 ────────────────────────────────────────
-            print(f"\n📝 [Step 2] 카나나({self.generator.model_id.split('/')[-1]}) — 동화 생성 중...")
+            print(f"\n [Step 2] 카나나({self.generator.model_id.split('/')[-1]}) — 동화 생성 중...")
             story = self.generator.generate(
                 final_plan,
                 rewrite_hint,
@@ -115,16 +115,16 @@ class FairyTalePipeline:
 
             final_story = story
             previous_story = story
-            print("\n📖 [생성된 동화]")
+            print("\n [생성된 동화]")
             print(story)
             print(f"\n  글자 수 (공백 제외): {len(story.replace(' ', ''))}자")
             print(f"  생성 주체: {generator_label}")
 
             # ── Step 3: 1차 평가 (카나나 세이프가드) ─────────────────────────
-            print("\n🔍 [Step 3] 1차 평가 — 카나나 세이프가드")
+            print("\n [Step 3] 1차 평가 — 카나나 세이프가드")
             sentences, flagged = self.safeguard.evaluate_story(story)
             if flagged:
-                print(f"  ⚠ 요주의 문장 {len(flagged)}개 발견:")
+                print(f"  요주의 문장 {len(flagged)}개 발견:")
                 for f in flagged:
                     print(f"    [{f['idx']+1}번] {f['category']}({f['desc']}): {f['sentence']}")
             else:
@@ -133,7 +133,7 @@ class FairyTalePipeline:
             # ── Step 4: 2차 평가 (Solar) ──────────────────────────────────────
             # 세이프가드 태깅 결과를 항상 Solar에 전달한다.
             # S3/S5/S6이 태깅된 경우 Solar 프롬프트 규칙에 의해 맥락 무관 FAIL 처리된다.
-            print("\n🧠 [Step 4] 2차 평가 — Solar API (맥락 기반)")
+            print("\n [Step 4] 2차 평가 — Solar API (맥락 기반)")
             eval_result, passed, eval_summary = self.evaluator.evaluate(
                 story, flagged, user_request=user_request
             )
@@ -156,9 +156,9 @@ class FairyTalePipeline:
 
             if attempt < MAX_ATTEMPTS:
                 rewrite_hint = self.evaluator.build_rewrite_hint(eval_result)
-                print(f"\n🔄 수정 지시 생성 완료 → 카나나 재생성 시작 (시도 {attempt+1})")
+                print(f"\n 수정 지시 생성 완료 → 카나나 재생성 시작 (시도 {attempt+1})")
             else:
-                print(f"\n⚠ 최대 시도 횟수({MAX_ATTEMPTS}회) 초과.")
+                print(f"\n 최대 시도 횟수({MAX_ATTEMPTS}회) 초과.")
 
         # ── 최고 점수 동화 선택 ───────────────────────────────────────────────
         # 합격한 시도가 있으면 첫 번째 합격본, 없으면 평균 점수가 가장 높은 시도 선택
@@ -173,7 +173,7 @@ class FairyTalePipeline:
         best_attempt = best_record.attempt
 
         if best_attempt != records[-1].attempt:
-            print(f"\n💡 시도 {best_attempt}의 동화가 최고 점수 "
+            print(f"\n 시도 {best_attempt}의 동화가 최고 점수 "
                   f"({best_record.eval_result.get('average_score', 0):.2f}점)로 선택됨 "
                   f"(마지막 시도 {records[-1].attempt}번 대신)")
 
@@ -193,11 +193,11 @@ class FairyTalePipeline:
 
 def _print_header(user_request: str, model_id: str):
     print("\n" + "=" * 70)
-    print("  🌟 LLM 기반 아동 동화 생성 시스템")
+    print("  LLM 기반 아동 동화 생성 시스템")
     print("=" * 70)
     print(f"  Generator:  {model_id.split('/')[-1]}")
     print(f"  최대 시도:  {MAX_ATTEMPTS}회")
-    print(f"\n📝 사용자 요청:\n  {user_request}")
+    print(f"\n 사용자 요청:\n  {user_request}")
     print("=" * 70)
 
 
@@ -215,20 +215,20 @@ def print_final_result(result: PipelineResult):
     print(f"  Generator:  {result.generator_model.split('/')[-1]}")
     print(f"  총 시도:    {result.total_attempts}회")
     print(f"  최종 선택:  시도 {result.best_attempt}번 (최고 점수)")
-    print("\n🧩 [최종 동화 기획]")
+    print("\n [최종 동화 기획]")
     print(result.final_plan)
-    print("\n📖 [최종 동화]")
+    print("\n [최종 동화]")
     print("─" * 70)
     print(result.final_story)
     print("─" * 70)
     print(f"  글자 수 (공백 제외): {len(result.final_story.replace(' ', ''))}자")
 
     if result.attempts:
-        print("\n📊 [시도별 점수 히스토리]")
+        print("\n [시도별 점수 히스토리]")
         for rec in result.attempts:
             avg = rec.eval_result.get("average_score", "-")
             status = "✅ PASS" if rec.passed else "❌ FAIL"
-            best_mark = " ⭐ 최종 선택" if rec.attempt == result.best_attempt else ""
+            best_mark = " 최종 선택" if rec.attempt == result.best_attempt else ""
             print(f"  시도 {rec.attempt} ({rec.generator_model}): 평균 {avg}점 → {status}{best_mark}")
 
     print("=" * 70)
