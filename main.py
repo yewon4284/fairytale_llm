@@ -37,7 +37,7 @@ def get_user_request(args) -> str:
     print("  🌟 LLM 기반 아동 동화 생성 시스템")
     print("=" * 70)
     print("\n어떤 상황의 교훈을 담은 동화를 원하시나요?")
-    print("예시: '우리 아이가 나비를 찢어죽였어. 그러면 안된다는 교훈을 주는 동화를 써줘.'")
+    print("예시: '편식을 하면 좋지 않다는 교훈을 주는 동화를 써줘.'")
     print("      '친구에게 욕설을 하면 안된다는 교훈을 주는 동화를 써줘.'")
     print()
     print("⚠  편향 단어 주의: 공주/왕자/아들/딸/특정 성별·인종 단어는 입력하지 마세요.")
@@ -110,9 +110,6 @@ def main():
     )
     parser.add_argument("--request", type=str, default=None,
                         help="동화 생성 요청 (입력 시 1회 실행 후 종료)")
-    parser.add_argument("--mode", type=str, default="kanana_rewrite",
-                        choices=["kanana_rewrite", "solar_rewrite"],
-                        help="재작성 모드 (기본: kanana_rewrite)")
     parser.add_argument("--generator", type=str, default="1.5-8b",
                         choices=["nano", "1.5-8b"],
                         help="Generator 모델 (기본: 1.5-8b / 비교 실험: nano)")

@@ -4,7 +4,7 @@ pipeline.py
 
 [재작성 모드 — RewriteMode]
 
-  MODE A: KANANA_REWRITE  (카나나 재생성 모드)
+KANANA_REWRITE  (카나나 재생성 모드)
   ─────────────────────────────────────────────
   Solar가 평가 후 "무엇을 어떻게 고쳐라"는 지시(hint)를 내리고,
   카나나가 그 hint를 반영해 동화를 처음부터 다시 생성한다.
@@ -54,13 +54,6 @@ class RewriteMode(str, Enum):
     Solar가 수정 지시(hint)를 내리고, 카나나가 hint를 반영해 동화를 재생성한다.
     """
 
-    SOLAR_REWRITE = "solar_rewrite"
-    """
-    Solar 직접 수정 모드 (MODE B).
-    Solar가 이전 동화와 평가 결과를 보고 직접 수정한 동화를 생성한다.
-    카나나는 1회차에만 참여한다.
-    """
-
 
 DEFAULT_MODE = RewriteMode.KANANA_REWRITE
 # Solar가 수정 지시(hint)를 작성하고, 카나나 1.5 8B가 hint를 반영해 동화를 재생성
@@ -101,7 +94,7 @@ class FairyTalePipeline:
         generator     : FairyTaleGenerator 인스턴스
         safeguard     : KananaSafeguard 인스턴스
         evaluator     : SolarEvaluator 인스턴스
-        rewrite_mode  : RewriteMode.KANANA_REWRITE 또는 RewriteMode.SOLAR_REWRITE
+        rewrite_mode  : RewriteMode.KANANA_REWRITE
         few_shot_text : 데이터셋에서 로드한 참고 동화 텍스트 (퓨샷, 없으면 빈 문자열)
     """
 
@@ -132,7 +125,6 @@ class FairyTalePipeline:
 
         records: List[AttemptRecord] = []
         rewrite_hint = ""       # MODE A 전용: 카나나에 전달할 수정 지시
-        previous_story = ""     # MODE B 전용: Solar에 전달할 이전 동화
         final_plan = ""
         final_story = ""
         passed = False
@@ -148,8 +140,7 @@ class FairyTalePipeline:
 
             # ── Step 2: 동화 본문 생성 ────────────────────────────────────────
             if attempt == 1 or self.rewrite_mode == RewriteMode.KANANA_REWRITE:
-                # MODE A: 매 회차 카나나가 (hint 반영하여) 생성
-                # MODE B: 1회차만 카나나 생성, 이후는 Solar가 직접 생성
+                # 매 회차 카나나가 (hint 반영하여) 생성
                 print(f"\n📝 [Step 2] 카나나({self.generator.model_id.split('/')[-1]}) — 동화 생성 중...")
                 story = self.generator.generate(
                     final_plan,
@@ -157,16 +148,6 @@ class FairyTalePipeline:
                     few_shot_examples=self.few_shot_text,
                 )
                 generator_label = self.generator.model_id.split("/")[-1]
-
-            else:
-                # MODE B 2회차 이후: Solar가 이전 동화를 직접 수정
-                print(f"\n✏️  [Step 2] Solar — 이전 동화 직접 수정 중... (시도 {attempt})")
-                story = self.evaluator.rewrite_story(
-                    plan=final_plan,
-                    previous_story=previous_story,
-                    eval_result=records[-1].eval_result,
-                )
-                generator_label = "solar-pro (직접 수정)"
 
             final_story = story
             previous_story = story
@@ -213,10 +194,7 @@ class FairyTalePipeline:
                 if self.rewrite_mode == RewriteMode.KANANA_REWRITE:
                     # MODE A: Solar가 수정 지시를 hint로 만들어 카나나에 전달
                     rewrite_hint = self.evaluator.build_rewrite_hint(eval_result)
-                    print(f"\n🔄 [MODE A] 수정 지시 생성 완료 → 카나나 재생성 시작 (시도 {attempt+1})")
-                else:
-                    # MODE B: 이전 동화를 그대로 보존, Solar가 다음 루프에서 직접 수정
-                    print(f"\n🔄 [MODE B] Solar 직접 수정 시작 (시도 {attempt+1})")
+                    print(f"\n🔄 수정 지시 생성 완료 → 카나나 재생성 시작 (시도 {attempt+1})")
             else:
                 print(f"\n⚠ 최대 시도 횟수({MAX_ATTEMPTS}회) 초과.")
 
@@ -254,8 +232,7 @@ class FairyTalePipeline:
 
 def _print_header(user_request: str, mode: RewriteMode, model_id: str):
     mode_label = {
-        RewriteMode.KANANA_REWRITE: "MODE A — 카나나 재생성 (Solar 지시 → 카나나 재작성)",
-        RewriteMode.SOLAR_REWRITE:  "MODE B — Solar 직접 수정 (Solar가 동화 직접 수정)",
+        RewriteMode.KANANA_REWRITE: "카나나 재생성 (Solar 지시 → 카나나 재작성)",
     }[mode]
 
     print("\n" + "=" * 70)
@@ -269,9 +246,7 @@ def _print_header(user_request: str, mode: RewriteMode, model_id: str):
 
 
 def _print_attempt_header(attempt: int, mode: RewriteMode):
-    mode_tag = "A" if mode == RewriteMode.KANANA_REWRITE else "B"
-    print(f"\n{'─' * 70}")
-    print(f"  🎯 [MODE {mode_tag}] 시도 {attempt} / {MAX_ATTEMPTS}")
+    print(f"  시도 {attempt} / {MAX_ATTEMPTS}")
     print(f"{'─' * 70}")
 
 
