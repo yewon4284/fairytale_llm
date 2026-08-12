@@ -173,9 +173,13 @@ def print_summary(results):
             print(f"  {label:22s} {mean:10.1f} {std:10.1f} {cv:13.1f}%")
         stats_by_cond[cond] = cond_stats
 
-        pass_rate = sum(r["passed"] for r in rows) / n
-        avg_score = sum(r["average_score"] for r in rows) / n
-        print(f"\n  (참고) 합격률 {pass_rate*100:.1f}% / 평균 CSM 점수 {avg_score:.2f}")
+        scored_rows = [r for r in rows if r.get("average_score") is not None]
+        if scored_rows:
+            pass_rate = sum(bool(r["passed"]) for r in scored_rows) / len(scored_rows)
+            avg_score = sum(r["average_score"] for r in scored_rows) / len(scored_rows)
+            print(f"\n  (참고) 합격률 {pass_rate*100:.1f}% / 평균 CSM 점수 {avg_score:.2f}  (평가 데이터 있는 n={len(scored_rows)})")
+        else:
+            print("\n  (참고) CSM 평가 데이터 없음 (수동 임포트분)")
 
     # CV 낮은 쪽(더 일정한 쪽) 요약
     if len(stats_by_cond) == 2:
@@ -216,6 +220,54 @@ def load_corpus_stories(corpus_dir, classification=None, exclude_filenames=None)
             texts.append(text)
             names.append(fname)
     return texts, names
+
+
+def import_manual_batch(path, output_path):
+    """수동으로 생성된 [{id, topic, 기본, 퓨샷}, ...] 형식 JSON을 ab_results.json에 합친다.
+    (세이프가드/Solar 평가 없이 만들어진 데이터라 average_score/passed는 None으로 남기고
+    형식 지표(format_first/format_final)만 채워서 --summary, --compare-corpus에서 쓸 수 있게 한다.)
+    GPU/모델 로딩 불필요."""
+    with open(path, "r", encoding="utf-8") as f:
+        manual = json.load(f)
+
+    results = load_existing_results(output_path)
+    existing_keys = {(r["topic_id"], r["condition"]) for r in results}
+
+    added = 0
+    for item in manual:
+        tid = item["id"]
+        topic = item.get("topic", "")
+        pairs = [("few_shot_off", item.get("기본", "")), ("few_shot_on", item.get("퓨샷", ""))]
+        for condition, text in pairs:
+            if not text.strip():
+                continue
+            if (tid, condition) in existing_keys:
+                logger.warning(f"topic {tid} ({condition}) 이미 존재 — 건너뜀 (덮어쓰려면 ab_results.json에서 먼저 지우세요)")
+                continue
+            fm = compute_format_metrics(text)
+            record = {
+                "topic_id": tid,
+                "condition": condition,
+                "request": topic,
+                "passed": None,
+                "total_attempts": None,
+                "best_attempt": None,
+                "average_score": None,
+                "min_score": None,
+                "scores": {k: None for k in SCORE_KEYS},
+                "elapsed_sec": None,
+                "format_first": fm,
+                "format_final": fm,
+                "first_story": text,
+                "final_story": text,
+                "source": "manual_import",
+            }
+            results.append(record)
+            existing_keys.add((tid, condition))
+            added += 1
+
+    save_results(output_path, results)
+    logger.info(f"{added}개 레코드 추가 완료 -> {output_path} (전체 {len(results)}개)")
 
 
 def print_compare_to_corpus(results, corpus_dir, classification, exclude_dir):
@@ -353,7 +405,14 @@ def main():
                          help="코퍼스에서 필터링할 classification. 빈 문자열이면 전체(분류 무관)")
     parser.add_argument("--exclude-dir", default="data_sorted",
                          help="코퍼스에서 제외할 파일명이 들어있는 폴더 (퓨샷으로 이미 쓴 파일 제외용)")
+    parser.add_argument("--import-manual", default=None,
+                         help="[{id, topic, 기본, 퓨샷}, ...] 형식 JSON 파일 경로. "
+                              "세이프가드/Solar 평가 없이 만든 결과를 ab_results.json에 형식 지표만 계산해서 합친다. GPU 불필요")
     args = parser.parse_args()
+
+    if args.import_manual:
+        import_manual_batch(args.import_manual, args.output)
+        return
 
     if args.compare_fewshot:
         results = load_existing_results(args.output)
