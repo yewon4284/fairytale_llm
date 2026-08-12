@@ -155,8 +155,9 @@ def print_summary(results):
     print("  퓨샷 on/off — 형식(길이/문단/문장) 일관성 비교  (attempt 1, 원본 기준)")
     print("=" * 78)
 
+    all_conditions = sorted(set(r["condition"] for r in results)) or CONDITIONS
     stats_by_cond = {}
-    for cond in CONDITIONS:
+    for cond in all_conditions:
         rows = [r for r in results if r["condition"] == cond]
         if not rows:
             print(f"\n[{cond}] 결과 없음")
@@ -253,6 +254,37 @@ def print_corpus_by_category(corpus_dir):
     print("\n  주의: n이 작은 카테고리(50~60편대)는 CV 추정이 상대적으로 덜 안정적일 수 있습니다.")
     print("=" * 100)
     return ranking
+
+
+def build_fewshot_text(dir_path, n=2, seed=42, classification=None):
+    """dir_path 안 JSON 동화들에서 (classification 지정 시 그것만 필터링 후) n편을 seed 고정으로
+    무작위 추출해 퓨샷 프롬프트 텍스트로 합친다. main.py의 load_few_shot()과 동일한 포맷."""
+    import glob
+    import random as _random
+    from src.data_loader import story_to_text
+
+    candidates = []
+    for fp in sorted(glob.glob(os.path.join(dir_path, "*.json"))):
+        try:
+            with open(fp, "r", encoding="utf-8") as f:
+                d = json.load(f)
+        except Exception:
+            continue
+        if classification and d.get("classification") != classification:
+            continue
+        text = story_to_text(d)
+        if text.strip():
+            candidates.append((d.get("title", ""), text))
+
+    if n is not None and n < len(candidates):
+        rnd = _random.Random(seed)
+        candidates = rnd.sample(candidates, n)
+
+    lines = []
+    for i, (title, text) in enumerate(candidates, 1):
+        header = f"[참고 동화 {i}] {title}" if title else f"[참고 동화 {i}]"
+        lines.append(f"{header}\n{text}")
+    return "\n\n".join(lines), len(candidates)
 
 
 def load_corpus_stories(corpus_dir, classification=None, exclude_filenames=None):
@@ -359,30 +391,30 @@ def print_compare_to_corpus(results, corpus_dir, classification, exclude_dir):
         cv = (s / c * 100) if c else 0
         print(f"  {lbl:22s} 평균 {c:8.1f}   표준편차 {s:8.1f}   CV {cv:6.1f}%")
 
-    on_rows = [r for r in results if r["condition"] == "few_shot_on"]
-    off_rows = [r for r in results if r["condition"] == "few_shot_off"]
-    if not on_rows and not off_rows:
+    conds = sorted(set(r["condition"] for r in results))
+    if not conds:
         print("\nab_results.json에 생성 결과가 없습니다. 먼저 run_ab_test.py를 실행하세요.")
         return
 
     print("\n" + "-" * 96)
     print("  코퍼스 대비 생성 결과(attempt 1) 비교  — %차이 = (생성평균-코퍼스평균)/코퍼스평균 x 100")
     print("-" * 96)
-    header = f"  {'지표':20s} {'코퍼스평균':>10s} {'코퍼스CV':>9s} {'ON평균':>10s} {'ON차이':>9s} {'OFF평균':>10s} {'OFF차이':>9s}"
+    col_w = max(10, 60 // max(1, len(conds)))
+    header = f"  {'지표':20s} {'코퍼스평균':>10s} {'코퍼스CV':>9s}"
+    for cond in conds:
+        header += f" {cond+'평균':>{col_w}s} {cond+'차이':>{col_w}s}"
     print(header)
     for key, lbl in FORMAT_METRIC_LABELS.items():
         c = corpus_avg[key]
         cv = (corpus_std[key] / c * 100) if c else 0
-        on_vals = [row["format_first"][key] for row in on_rows]
-        off_vals = [row["format_first"][key] for row in off_rows]
-        on_mean = statistics.mean(on_vals) if on_vals else 0
-        off_mean = statistics.mean(off_vals) if off_vals else 0
-        on_diff = (on_mean - c) / c * 100 if c else 0
-        off_diff = (off_mean - c) / c * 100 if c else 0
-        print(
-            f"  {lbl:20s} {c:10.1f} {cv:8.1f}% {on_mean:10.1f} {on_diff:+8.1f}% {off_mean:10.1f} {off_diff:+8.1f}%"
-        )
-    print("\n  -> ON/OFF 차이의 절대값이 작을수록 실제(held-out) 동화 형식에 더 가깝다는 뜻입니다.")
+        row = f"  {lbl:20s} {c:10.1f} {cv:8.1f}%"
+        for cond in conds:
+            vals = [r["format_first"][key] for r in results if r["condition"] == cond]
+            mean = statistics.mean(vals) if vals else 0
+            diff = (mean - c) / c * 100 if c else 0
+            row += f" {mean:{col_w}.1f} {diff:+{col_w-1}.1f}%"
+        print(row)
+    print("\n  -> 차이의 절대값이 작을수록 실제(held-out) 동화 형식에 더 가깝다는 뜻입니다.")
     print("=" * 96)
 
 
@@ -469,6 +501,10 @@ def main():
                               "세이프가드/Solar 평가 없이 만든 결과를 ab_results.json에 형식 지표만 계산해서 합친다. GPU 불필요")
     parser.add_argument("--compare-categories", action="store_true",
                          help="corpus-dir 안 동화를 classification별로 묶어 형식 CV 랭킹을 매김 (GPU 불필요)")
+    parser.add_argument("--extra-condition", default=None,
+                         help="세 번째 조건 이름 (예: few_shot_mixed). --extra-fewshot-dir와 함께 사용")
+    parser.add_argument("--extra-fewshot-dir", default=None,
+                         help="세 번째 조건의 퓨샷 소스 폴더 (예: data_sorted_mixed)")
     args = parser.parse_args()
 
     if args.import_manual:
@@ -545,18 +581,29 @@ def main():
         "few_shot_on": FairyTalePipeline(generator, safeguard, evaluator, few_shot_text=few_shot_text),
         "few_shot_off": FairyTalePipeline(generator, safeguard, evaluator, few_shot_text=""),
     }
+    conditions = list(CONDITIONS)
+
+    if args.extra_condition and args.extra_fewshot_dir:
+        extra_text, extra_n = build_fewshot_text(args.extra_fewshot_dir, n=args.few_shot_n)
+        logger.info(f"[{args.extra_condition}] 퓨샷 소스: {args.extra_fewshot_dir} (풀 {extra_n}편 중 {args.few_shot_n}편 샘플, {len(extra_text)}자)")
+        if not extra_text:
+            logger.warning(f"{args.extra_fewshot_dir}에서 퓨샷 텍스트를 만들지 못했습니다.")
+        pipelines[args.extra_condition] = FairyTalePipeline(
+            generator, safeguard, evaluator, few_shot_text=extra_text
+        )
+        conditions.append(args.extra_condition)
 
     results = load_existing_results(args.output)
     done = {(r["topic_id"], r["condition"]) for r in results}
 
-    total_runs = len(topics) * len(CONDITIONS)
+    total_runs = len(topics) * len(conditions)
     run_idx = len(done)
 
     for topic in topics:
         tid = topic["id"]
         request = topic["topic"]
 
-        for condition in CONDITIONS:
+        for condition in conditions:
             if (tid, condition) in done:
                 continue
             run_idx += 1

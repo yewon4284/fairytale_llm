@@ -15,6 +15,7 @@ all_data/
 ab_results.json
 ab_test.log
 manual_batch2.json
+data_sorted_mixed/
 venv/
 .venv/
 __pycache__/
