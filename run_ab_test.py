@@ -196,6 +196,65 @@ def print_summary(results):
     print("\n" + "=" * 78)
 
 
+def print_corpus_by_category(corpus_dir):
+    """corpus_dir 안 동화들을 classification별로 묶어 형식 CV를 비교하고,
+    어느 카테고리가 형식적으로 가장 일정한지 랭킹을 매긴다. GPU/모델 로딩 불필요."""
+    import glob
+    from collections import defaultdict
+    from src.data_loader import story_to_text
+
+    by_cat = defaultdict(list)
+    for fp in sorted(glob.glob(os.path.join(corpus_dir, "*.json"))):
+        try:
+            with open(fp, "r", encoding="utf-8") as f:
+                d = json.load(f)
+        except Exception:
+            continue
+        cls = d.get("classification") or "미분류"
+        text = story_to_text(d)
+        if text.strip():
+            by_cat[cls].append(text)
+
+    if not by_cat:
+        print(f"'{corpus_dir}'에서 동화를 찾지 못했습니다.")
+        return
+
+    print("\n" + "=" * 100)
+    print(f"  카테고리별 형식 일관성(CV) 비교 — {corpus_dir}")
+    print("=" * 100)
+
+    cat_stats = {}
+    for cls, texts in sorted(by_cat.items(), key=lambda x: -len(x[1])):
+        metrics_list = [compute_format_metrics(t) for t in texts]
+        stats = {}
+        for key in FORMAT_METRIC_LABELS:
+            vals = [m[key] for m in metrics_list]
+            stats[key] = _mean_std_cv(vals)
+        cat_stats[cls] = stats
+
+        print(f"\n[{cls}]  (n={len(texts)})")
+        print(f"  {'지표':22s} {'평균':>10s} {'CV(%)':>8s}")
+        for key, label in FORMAT_METRIC_LABELS.items():
+            mean, std, cv = stats[key]
+            print(f"  {label:22s} {mean:10.1f} {cv:7.1f}%")
+
+    print("\n" + "-" * 100)
+    print("  카테고리별 종합 랭킹 (6개 형식 지표 CV의 평균 — 낮을수록 형식이 더 일정함)")
+    print("-" * 100)
+    ranking = []
+    for cls, stats in cat_stats.items():
+        avg_cv = statistics.mean(stats[key][2] for key in FORMAT_METRIC_LABELS)
+        ranking.append((cls, avg_cv, len(by_cat[cls])))
+    ranking.sort(key=lambda x: x[1])
+    for i, (cls, avg_cv, n) in enumerate(ranking, 1):
+        mark = "  <- 가장 일정함" if i == 1 else ""
+        print(f"  {i}. {cls:14s}  평균 CV {avg_cv:6.1f}%   (n={n}){mark}")
+
+    print("\n  주의: n이 작은 카테고리(50~60편대)는 CV 추정이 상대적으로 덜 안정적일 수 있습니다.")
+    print("=" * 100)
+    return ranking
+
+
 def load_corpus_stories(corpus_dir, classification=None, exclude_filenames=None):
     """corpus_dir 안의 JSON 동화들을 읽어 (텍스트, 파일명) 리스트로 반환.
     classification 지정 시 해당 분류만, exclude_filenames 지정 시 그 파일명들은 제외."""
@@ -408,10 +467,16 @@ def main():
     parser.add_argument("--import-manual", default=None,
                          help="[{id, topic, 기본, 퓨샷}, ...] 형식 JSON 파일 경로. "
                               "세이프가드/Solar 평가 없이 만든 결과를 ab_results.json에 형식 지표만 계산해서 합친다. GPU 불필요")
+    parser.add_argument("--compare-categories", action="store_true",
+                         help="corpus-dir 안 동화를 classification별로 묶어 형식 CV 랭킹을 매김 (GPU 불필요)")
     args = parser.parse_args()
 
     if args.import_manual:
         import_manual_batch(args.import_manual, args.output)
+        return
+
+    if args.compare_categories:
+        print_corpus_by_category(args.corpus_dir)
         return
 
     if args.compare_fewshot:
