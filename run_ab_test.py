@@ -65,8 +65,9 @@ CONDITIONS = ["few_shot_on", "few_shot_off"]
 # safeguard.py의 문장 분리 정규식과 동일 기준 사용 (마침표/물음표/느낌표/'요' 뒤 공백)
 SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?요])\s+")
 
-# 큰따옴표로 감싸진 구간을 대사로 간주
-DIALOGUE_RE = re.compile(r'"([^"]*)"')
+# 큰따옴표(직선/스마트 둘 다) 로 감싸진 구간을 대사로 간주
+# 생성 결과가 " " 와 “ ” 를 섞어 쓰기 때문에 둘 다 잡아야 한다.
+DIALOGUE_RE = re.compile(r'"([^"]*)"|“([^”]*)”')
 
 # 형식 지표로 집계할 필드와 표시 이름
 FORMAT_METRIC_LABELS = {
@@ -124,8 +125,9 @@ def save_results(path, results):
 
 
 def compute_dialogue_chars(story: str) -> int:
-    """큰따옴표 " " 안의 텍스트(대사)만 뽑아 공백/줄바꿈 제외 글자수를 센다."""
-    dialogue_text = "".join(DIALOGUE_RE.findall(story))
+    """큰따옴표(직선 " " / 스마트 “ ") 안의 텍스트(대사)만 뽑아 공백/줄바꿈 제외 글자수를 센다.
+    DIALOGUE_RE에 그룹이 2개(직선용/스마트용)라 findall이 튜플을 반환하므로 평탄화해서 합친다."""
+    dialogue_text = "".join(g1 or g2 for g1, g2 in DIALOGUE_RE.findall(story))
     return len(dialogue_text.replace(" ", "").replace("\n", ""))
 
 
@@ -750,12 +752,28 @@ def main():
                          help="실행 없이 조건별 원본기준값 대비 |편차|를 ref-condition과 paired Wilcoxon 검정 + FDR 보정 (GPU 불필요)")
     parser.add_argument("--ref-condition", default="few_shot_off",
                          help="--paired-test에서 비교 기준으로 삼을 조건 (기본 few_shot_off)")
+    parser.add_argument("--refresh-format", action="store_true",
+                         help="실행 없이 저장된 first_story/final_story 텍스트로 모든 레코드의 형식 지표를 강제로 다시 계산 "
+                              "(대사 판별 정규식처럼 계산 로직 자체가 바뀌었을 때 사용. 필드 존재 여부와 무관하게 덮어씀)")
     args = parser.parse_args()
 
     if len(args.extra_condition) != len(args.extra_fewshot_dir):
         logger.error("--extra-condition과 --extra-fewshot-dir 개수가 다릅니다 "
                       f"({len(args.extra_condition)} vs {len(args.extra_fewshot_dir)}). 순서대로 짝을 맞춰 주세요.")
         sys.exit(1)
+
+    if args.refresh_format:
+        results = load_existing_results(args.output)  # 이미 backfill은 한 번 거침
+        n_updated = 0
+        for r in results:
+            for field_key, text_key in (("format_first", "first_story"), ("format_final", "final_story")):
+                text = r.get(text_key)
+                if text:
+                    r[field_key] = compute_format_metrics(text)
+                    n_updated += 1
+        save_results(args.output, results)
+        logger.info(f"{args.output}: {n_updated}개 필드를 강제로 재계산했습니다 ({len(results)}개 레코드).")
+        return
 
     if args.import_manual:
         import_manual_batch(args.import_manual, args.output)
