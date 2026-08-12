@@ -93,8 +93,27 @@ def load_topics(path):
 def load_existing_results(path):
     if os.path.exists(path):
         with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
+            results = json.load(f)
+        if _backfill_format_metrics(results):
+            save_results(path, results)
+            logger.info(f"{path}: 예전 레코드에 누락된 형식 지표(대사 비중 등)를 다시 계산해 채워 넣었습니다.")
+        return results
     return []
+
+
+def _backfill_format_metrics(results) -> bool:
+    """예전(대사 비중 지표 추가 이전) 레코드에는 format_first/format_final에
+    dialogue_ratio 등 새 필드가 없다. 저장된 first_story/final_story 텍스트에서
+    다시 계산해 채워 넣는다. 뭔가 채워 넣었으면 True를 반환."""
+    changed = False
+    for r in results:
+        for field_key, text_key in (("format_first", "first_story"), ("format_final", "final_story")):
+            fm = r.get(field_key)
+            text = r.get(text_key)
+            if fm is not None and text and "dialogue_ratio" not in fm:
+                fm.update(compute_format_metrics(text))
+                changed = True
+    return changed
 
 
 def save_results(path, results):
