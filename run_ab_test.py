@@ -18,15 +18,27 @@ test_topics.json에 있는 각 주제에 대해
 중간에 중단돼도 이미 끝난 (topic_id, condition)은 다시 안 돌리고 이어서 진행한다.
 
 사용법:
-    python run_ab_test.py                          # 25개 전부, 두 조건
+    python run_ab_test.py                          # 전부, 두 조건(few_shot_on/off)
     python run_ab_test.py --limit 3                # 앞 3개 주제만 (동작 확인용)
     python run_ab_test.py --no-safeguard            # 세이프가드 생략 (빠른 디버그용)
     python run_ab_test.py --summary                 # 실행 없이 기존 결과만 집계해서 출력
+
+    # 추가 조건(카테고리별 퓨샷 등)을 여러 개 동시에 돌리기 — 순서대로 짝지어짐
+    python run_ab_test.py \
+        --extra-condition cat_의사소통 --extra-fewshot-dir data_sorted_cat_의사소통 \
+        --extra-condition cat_예술경험 --extra-fewshot-dir data_sorted_cat_예술경험
+
+    # 원본 동화 기준값(카테고리 균등가중, CV 높은 카테고리는 중앙값) 계산만
+    python run_ab_test.py --corpus-baseline --corpus-dir all_data
+
+    # 조건별 |원본기준값-생성값| paired Wilcoxon 검정 + FDR 보정 (기준: few_shot_off)
+    python run_ab_test.py --paired-test --corpus-dir all_data
 """
 
 import argparse
 import json
 import logging
+import math
 import os
 import re
 import statistics
@@ -53,6 +65,9 @@ CONDITIONS = ["few_shot_on", "few_shot_off"]
 # safeguard.py의 문장 분리 정규식과 동일 기준 사용 (마침표/물음표/느낌표/'요' 뒤 공백)
 SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?요])\s+")
 
+# 큰따옴표로 감싸진 구간을 대사로 간주
+DIALOGUE_RE = re.compile(r'"([^"]*)"')
+
 # 형식 지표로 집계할 필드와 표시 이름
 FORMAT_METRIC_LABELS = {
     "char_count": "글자수(공백제외)",
@@ -62,7 +77,12 @@ FORMAT_METRIC_LABELS = {
     "paragraph_count": "문단수",
     "avg_sentence_len": "문장당 평균 글자수",
     "avg_paragraph_len": "문단당 평균 글자수",
+    "dialogue_ratio": "대사 비중(%)",
 }
+
+# "원본에 가까운가" 비교의 핵심 지표 — 개수 그대로 쓰면 총 길이 차이로 왜곡되므로
+# 문단당 글자수(비율)와 대사 비중(비율) 두 개만 원본-대비 핵심 비교에 쓴다.
+CORE_COMPARISON_METRICS = ("avg_paragraph_len", "dialogue_ratio")
 
 
 def load_topics(path):
@@ -84,6 +104,12 @@ def save_results(path, results):
     os.replace(tmp, path)
 
 
+def compute_dialogue_chars(story: str) -> int:
+    """큰따옴표 " " 안의 텍스트(대사)만 뽑아 공백/줄바꿈 제외 글자수를 센다."""
+    dialogue_text = "".join(DIALOGUE_RE.findall(story))
+    return len(dialogue_text.replace(" ", "").replace("\n", ""))
+
+
 def compute_format_metrics(story: str) -> dict:
     """동화 텍스트 하나에서 형식적 지표를 뽑아낸다."""
     story = story.strip()
@@ -97,6 +123,9 @@ def compute_format_metrics(story: str) -> dict:
     paragraphs = [p.strip() for p in story.split("\n") if p.strip()]
     paragraph_count = len(paragraphs) or 1
 
+    dialogue_chars = compute_dialogue_chars(story)
+    dialogue_ratio = round(dialogue_chars / char_count * 100, 1) if char_count else 0.0
+
     return {
         "char_count": char_count,
         "char_count_ws": char_count_ws,
@@ -105,6 +134,8 @@ def compute_format_metrics(story: str) -> dict:
         "paragraph_count": paragraph_count,
         "avg_sentence_len": round(char_count / sentence_count, 1),
         "avg_paragraph_len": round(char_count / paragraph_count, 1),
+        "dialogue_chars": dialogue_chars,
+        "dialogue_ratio": dialogue_ratio,
     }
 
 
@@ -197,9 +228,8 @@ def print_summary(results):
     print("\n" + "=" * 78)
 
 
-def print_corpus_by_category(corpus_dir):
-    """corpus_dir 안 동화들을 classification별로 묶어 형식 CV를 비교하고,
-    어느 카테고리가 형식적으로 가장 일정한지 랭킹을 매긴다. GPU/모델 로딩 불필요."""
+def load_stories_by_category(corpus_dir):
+    """corpus_dir 안 JSON 동화들을 classification별로 묶어 {classification: [text, ...]}로 반환."""
     import glob
     from collections import defaultdict
     from src.data_loader import story_to_text
@@ -215,6 +245,13 @@ def print_corpus_by_category(corpus_dir):
         text = story_to_text(d)
         if text.strip():
             by_cat[cls].append(text)
+    return by_cat
+
+
+def print_corpus_by_category(corpus_dir):
+    """corpus_dir 안 동화들을 classification별로 묶어 형식 CV를 비교하고,
+    어느 카테고리가 형식적으로 가장 일정한지 랭킹을 매긴다. GPU/모델 로딩 불필요."""
+    by_cat = load_stories_by_category(corpus_dir)
 
     if not by_cat:
         print(f"'{corpus_dir}'에서 동화를 찾지 못했습니다.")
@@ -254,6 +291,187 @@ def print_corpus_by_category(corpus_dir):
     print("\n  주의: n이 작은 카테고리(50~60편대)는 CV 추정이 상대적으로 덜 안정적일 수 있습니다.")
     print("=" * 100)
     return ranking
+
+
+def compute_corpus_baseline(corpus_dir, metrics=CORE_COMPARISON_METRICS, cv_threshold=60.0):
+    """'원본 동화' 기준값을 카테고리 구성 불균형을 통제해서 계산한다.
+
+    절차 (결과를 보기 전에 고정한 규칙):
+      1) 카테고리별 대표값 산출 — 그 카테고리의 CV가 cv_threshold(%)를 넘으면 중앙값,
+         아니면 평균을 대표값으로 쓴다 (CV 높은 카테고리의 극단값이 대표값을 왜곡하는 것을 방지).
+      2) 카테고리 대표값들을 '균등가중'으로 평균해서 최종 기준값을 만든다
+         (표본수 많은 카테고리, 예: 자연탐구 175편이 기준을 독식하지 않도록).
+
+    반환: (baseline, detail, pooled)
+      baseline: {metric: 최종 기준값}
+      detail:   {metric: {classification: {n, mean, median, cv, rep, method}}}
+      pooled:   {metric: 카테고리 구분 없이 전체를 그냥 풀링했을 때의 평균} (비교/검증용)
+    """
+    by_cat = load_stories_by_category(corpus_dir)
+    baseline, detail, pooled = {}, {}, {}
+
+    for metric in metrics:
+        detail[metric] = {}
+        reps = []
+        all_vals = []
+        for cls, texts in by_cat.items():
+            vals = [compute_format_metrics(t)[metric] for t in texts]
+            all_vals.extend(vals)
+            mean, std, cv = _mean_std_cv(vals)
+            median = statistics.median(vals) if vals else 0.0
+            use_median = cv > cv_threshold
+            rep = median if use_median else mean
+            detail[metric][cls] = {
+                "n": len(vals), "mean": mean, "median": median, "cv": cv,
+                "rep": rep, "method": "중앙값" if use_median else "평균",
+            }
+            reps.append(rep)
+        baseline[metric] = statistics.mean(reps) if reps else 0.0
+        pooled[metric] = statistics.mean(all_vals) if all_vals else 0.0
+
+    return baseline, detail, pooled
+
+
+def print_corpus_baseline(corpus_dir, cv_threshold=60.0):
+    """원본 동화 기준값(카테고리 균등가중, CV 높은 카테고리는 중앙값 사용)을 계산해서 출력.
+    GPU/모델 로딩 불필요."""
+    baseline, detail, pooled = compute_corpus_baseline(corpus_dir, cv_threshold=cv_threshold)
+
+    print("\n" + "=" * 100)
+    print(f"  원본 동화 기준값 산출 — {corpus_dir}  (카테고리 CV > {cv_threshold:.0f}% 이면 중앙값 사용, 아니면 평균)")
+    print("=" * 100)
+    for metric in CORE_COMPARISON_METRICS:
+        label = FORMAT_METRIC_LABELS[metric]
+        print(f"\n[{label}]")
+        print(f"  {'카테고리':14s} {'n':>4s} {'평균':>10s} {'중앙값':>10s} {'CV(%)':>8s} {'대표값':>10s} {'방식':>6s}")
+        for cls, d in sorted(detail[metric].items(), key=lambda x: -x[1]["n"]):
+            print(f"  {cls:14s} {d['n']:4d} {d['mean']:10.1f} {d['median']:10.1f} {d['cv']:7.1f}% {d['rep']:10.1f} {d['method']:>6s}")
+        print(f"  {'-'*14} {'-'*4} {'-'*10} {'-'*10} {'-'*8} {'-'*10} {'-'*6}")
+        print(f"  {'균등가중 기준값':14s} {'':>4s} {'':>10s} {'':>10s} {'':>8s} {baseline[metric]:10.1f}")
+        print(f"  (참고) 카테고리 구분 없이 {corpus_dir} 전체를 그냥 풀링한 평균: {pooled[metric]:.1f}"
+              f"  (차이 {(baseline[metric]-pooled[metric])/pooled[metric]*100:+.1f}%)" if pooled[metric] else "")
+    print("\n" + "=" * 100)
+    return baseline, detail, pooled
+
+
+def _norm_cdf(x):
+    return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
+
+
+def wilcoxon_signed_rank(diffs):
+    """paired 표본의 부호순위검정 (정규근사, 연속성 보정). scipy 없이 순수 파이썬 구현.
+    diffs: (조건A 값 - 조건B 값) 리스트. 0인 차이는 제외하고 계산.
+    반환: {"n": 유효표본수, "z": z통계량, "p": 양측 p값} 또는 표본이 너무 적으면 None."""
+    diffs = [d for d in diffs if d != 0]
+    n = len(diffs)
+    if n < 4:
+        return None
+
+    order = sorted(range(n), key=lambda i: abs(diffs[i]))
+    abs_sorted = [abs(diffs[i]) for i in order]
+    ranks = [0.0] * n
+    idx = 0
+    while idx < n:
+        j = idx
+        while j + 1 < n and abs_sorted[j + 1] == abs_sorted[idx]:
+            j += 1
+        avg_rank = (idx + 1 + j + 1) / 2.0
+        for k in range(idx, j + 1):
+            ranks[order[k]] = avg_rank
+        idx = j + 1
+
+    w_plus = sum(ranks[i] for i in range(n) if diffs[i] > 0)
+    w_minus = sum(ranks[i] for i in range(n) if diffs[i] < 0)
+    w = min(w_plus, w_minus)
+    mean_w = n * (n + 1) / 4.0
+    std_w = math.sqrt(n * (n + 1) * (2 * n + 1) / 24.0)
+    if std_w == 0:
+        return None
+    z = (w - mean_w + (0.5 if w < mean_w else -0.5)) / std_w
+    p = min(1.0, 2 * (1 - _norm_cdf(abs(z))))
+    return {"n": n, "w_plus": w_plus, "w_minus": w_minus, "z": z, "p": p}
+
+
+def bh_fdr(pvals):
+    """Benjamini-Hochberg FDR 보정. pvals 리스트(None 허용, 순서 유지)를 받아 같은 순서의 q값 리스트를 반환."""
+    indexed = [(i, p) for i, p in enumerate(pvals) if p is not None]
+    m = len(indexed)
+    if m == 0:
+        return [None] * len(pvals)
+    indexed_sorted = sorted(indexed, key=lambda x: x[1])
+    qvals = {}
+    prev_q = 1.0
+    for k in range(m - 1, -1, -1):
+        i, p = indexed_sorted[k]
+        rank = k + 1
+        q = min(p * m / rank, prev_q)
+        qvals[i] = q
+        prev_q = q
+    return [qvals.get(i) for i in range(len(pvals))]
+
+
+def print_paired_stats(results, corpus_dir, cv_threshold=60.0, ref_condition="few_shot_off"):
+    """조건별로 '원본 기준값에서 얼마나 벗어났는지(절대편차)'를 주제 단위로 짝지어(paired)
+    ref_condition과 비교하는 Wilcoxon 부호순위검정 + BH-FDR 다중비교 보정. GPU/모델 로딩 불필요.
+
+    가설: 퓨샷 조건은 ref_condition(기본: 퓨샷 OFF)보다 원본 기준값에서 벗어난 정도(|생성값-기준값|)가
+          더 작다 (= 원본 형식에 더 가깝다).
+    """
+    baseline, _, _ = compute_corpus_baseline(corpus_dir, cv_threshold=cv_threshold)
+
+    all_conditions = sorted(set(r["condition"] for r in results))
+    if ref_condition not in all_conditions:
+        print(f"\n기준 조건 '{ref_condition}'의 데이터가 ab_results.json에 없습니다.")
+        return
+    other_conditions = [c for c in all_conditions if c != ref_condition]
+    if not other_conditions:
+        print("\n비교할 다른 조건이 없습니다.")
+        return
+
+    print("\n" + "=" * 100)
+    print(f"  paired 검정 — 원본 기준값 대비 |편차| 비교 (기준 조건: {ref_condition})")
+    print(f"  귀무가설: 두 조건의 |생성값-원본기준값| 분포에 차이가 없다")
+    print("=" * 100)
+
+    tests = []  # (metric, cond, result_dict or None, median_diff)
+    for metric in CORE_COMPARISON_METRICS:
+        target = baseline[metric]
+        ref_by_tid = {
+            r["topic_id"]: r["format_first"][metric]
+            for r in results if r["condition"] == ref_condition
+        }
+        for cond in other_conditions:
+            cond_by_tid = {
+                r["topic_id"]: r["format_first"][metric]
+                for r in results if r["condition"] == cond
+            }
+            common = sorted(set(ref_by_tid) & set(cond_by_tid))
+            diffs = [
+                abs(cond_by_tid[t] - target) - abs(ref_by_tid[t] - target)
+                for t in common
+            ]
+            res = wilcoxon_signed_rank(diffs)
+            median_diff = statistics.median(diffs) if diffs else None
+            tests.append((metric, cond, res, median_diff, len(common)))
+
+    pvals = [t[2]["p"] if t[2] else None for t in tests]
+    qvals = bh_fdr(pvals)
+
+    for (metric, cond, res, median_diff, npair), q in zip(tests, qvals):
+        label = FORMAT_METRIC_LABELS[metric]
+        if res is None:
+            print(f"  [{label}] {cond} vs {ref_condition}: 짝지어진 표본 부족(n={npair}) — 검정 생략")
+            continue
+        direction = "원본에 더 가까움" if median_diff < 0 else ("원본에서 더 멂" if median_diff > 0 else "차이 없음")
+        sig = "*" if (q is not None and q < 0.05) else " "
+        print(
+            f"  [{label}] {cond:14s} vs {ref_condition:14s}  n={res['n']:3d}  "
+            f"z={res['z']:+6.2f}  p={res['p']:.4f}  q(FDR)={q:.4f}{sig}  "
+            f"median(|편차A|-|편차B|)={median_diff:+7.1f}  -> {cond}가 {direction}"
+        )
+    print("\n  * = q<0.05 (FDR 보정 후에도 유의). median 값이 음수면 해당 조건이 기준 조건보다 원본에 더 가깝다는 뜻.")
+    print(f"  참고: 표본 수가 작으면(n<20~30) 검정력이 낮아 유의하지 않아도 실제 효과가 없다는 뜻은 아닙니다.")
+    print("=" * 100)
 
 
 def build_fewshot_text(dir_path, n=2, seed=42, classification=None):
@@ -501,11 +719,24 @@ def main():
                               "세이프가드/Solar 평가 없이 만든 결과를 ab_results.json에 형식 지표만 계산해서 합친다. GPU 불필요")
     parser.add_argument("--compare-categories", action="store_true",
                          help="corpus-dir 안 동화를 classification별로 묶어 형식 CV 랭킹을 매김 (GPU 불필요)")
-    parser.add_argument("--extra-condition", default=None,
-                         help="세 번째 조건 이름 (예: few_shot_mixed). --extra-fewshot-dir와 함께 사용")
-    parser.add_argument("--extra-fewshot-dir", default=None,
-                         help="세 번째 조건의 퓨샷 소스 폴더 (예: data_sorted_mixed)")
+    parser.add_argument("--extra-condition", action="append", default=[],
+                         help="추가 조건 이름 (예: cat_의사소통). 여러 번 줄 수 있음. --extra-fewshot-dir와 순서대로 짝지어짐")
+    parser.add_argument("--extra-fewshot-dir", action="append", default=[],
+                         help="추가 조건의 퓨샷 소스 폴더 (예: data_sorted_cat_의사소통). --extra-condition과 같은 개수/순서")
+    parser.add_argument("--corpus-baseline", action="store_true",
+                         help="실행 없이 원본 동화 기준값(카테고리 균등가중, CV 높은 카테고리는 중앙값) 계산해서 출력 (GPU 불필요)")
+    parser.add_argument("--cv-threshold", type=float, default=60.0,
+                         help="카테고리 대표값 산출 시 평균 대신 중앙값을 쓰는 CV(%%) 임계값 (기본 60)")
+    parser.add_argument("--paired-test", action="store_true",
+                         help="실행 없이 조건별 원본기준값 대비 |편차|를 ref-condition과 paired Wilcoxon 검정 + FDR 보정 (GPU 불필요)")
+    parser.add_argument("--ref-condition", default="few_shot_off",
+                         help="--paired-test에서 비교 기준으로 삼을 조건 (기본 few_shot_off)")
     args = parser.parse_args()
+
+    if len(args.extra_condition) != len(args.extra_fewshot_dir):
+        logger.error("--extra-condition과 --extra-fewshot-dir 개수가 다릅니다 "
+                      f"({len(args.extra_condition)} vs {len(args.extra_fewshot_dir)}). 순서대로 짝을 맞춰 주세요.")
+        sys.exit(1)
 
     if args.import_manual:
         import_manual_batch(args.import_manual, args.output)
@@ -513,6 +744,15 @@ def main():
 
     if args.compare_categories:
         print_corpus_by_category(args.corpus_dir)
+        return
+
+    if args.corpus_baseline:
+        print_corpus_baseline(args.corpus_dir, cv_threshold=args.cv_threshold)
+        return
+
+    if args.paired_test:
+        results = load_existing_results(args.output)
+        print_paired_stats(results, args.corpus_dir, cv_threshold=args.cv_threshold, ref_condition=args.ref_condition)
         return
 
     if args.compare_fewshot:
@@ -583,15 +823,15 @@ def main():
     }
     conditions = list(CONDITIONS)
 
-    if args.extra_condition and args.extra_fewshot_dir:
-        extra_text, extra_n = build_fewshot_text(args.extra_fewshot_dir, n=args.few_shot_n)
-        logger.info(f"[{args.extra_condition}] 퓨샷 소스: {args.extra_fewshot_dir} (풀 {extra_n}편 중 {args.few_shot_n}편 샘플, {len(extra_text)}자)")
+    for extra_condition, extra_dir in zip(args.extra_condition, args.extra_fewshot_dir):
+        extra_text, extra_n = build_fewshot_text(extra_dir, n=args.few_shot_n)
+        logger.info(f"[{extra_condition}] 퓨샷 소스: {extra_dir} (풀 {extra_n}편 중 {args.few_shot_n}편 샘플, {len(extra_text)}자)")
         if not extra_text:
-            logger.warning(f"{args.extra_fewshot_dir}에서 퓨샷 텍스트를 만들지 못했습니다.")
-        pipelines[args.extra_condition] = FairyTalePipeline(
+            logger.warning(f"{extra_dir}에서 퓨샷 텍스트를 만들지 못했습니다.")
+        pipelines[extra_condition] = FairyTalePipeline(
             generator, safeguard, evaluator, few_shot_text=extra_text
         )
-        conditions.append(args.extra_condition)
+        conditions.append(extra_condition)
 
     results = load_existing_results(args.output)
     done = {(r["topic_id"], r["condition"]) for r in results}
