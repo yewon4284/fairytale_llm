@@ -298,6 +298,17 @@ def main():
                 f"/ {elapsed:.0f}초"
             )
 
+            # 장시간 반복 실행 시 CUDA 메모리 파편화를 줄이기 위해 매 실행 후 캐시 정리
+            try:
+                import gc
+                import torch
+                del result
+                gc.collect()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            except Exception:
+                pass
+
     logger.info(f"전체 완료 -> {args.output}")
     print_summary(results)
 
