@@ -18,12 +18,7 @@ fairytale_llm/
 ├── finetune/
 │   └── kanana-s5-adapter/        # S5(그루밍) 탐지 LoRA 어댑터
 ├── data_sorted/                  # 아동 동화 JSON 데이터셋 (정렬됨)
-├── frontend/
-│   └── index.html                # 웹 UI (React, 단일 파일)
-├── main.py                       # CLI 진입점
-├── server.py                     # FastAPI 서버 (웹 서비스용)
-├── image_generator.py            # Pollinations API 삽화 생성
-└── image_generator_stability.py  # Stability AI API 삽화 생성 (대안)
+└── main.py                       # CLI 진입점
 ```
 
 ---
@@ -46,7 +41,7 @@ fairytale_llm/
   └─ SOFT (S1·S2·S4·S7): Solar가 맥락 보고 자율 판단
   ↓
 [2차 판정] Solar Pro 3 → CSM 6개 항목 품질 평가 + 맥락 안전성 판정
-  ├─ PASS → 삽화 생성 (Pollinations API, 기승전결 4장면) → 최종 출력
+  ├─ PASS → 최종 출력
   └─ FAIL → 수정 지시(rewrite_instructions) 생성 → kanana 재생성 (최대 3회)
 ```
 
@@ -80,13 +75,6 @@ python main.py --generator 1.5-8b
 
 # 빠른 테스트 (세이프가드 없이)
 python main.py --no-safeguard --request "친구와 사이좋게 지내는 동화를 써줘."
-```
-
-### 웹 서버
-
-```bash
-uvicorn server:app --host 0.0.0.0 --port 8000 --reload
-# 브라우저에서 http://<서버IP>:8000 접속
 ```
 
 ---
@@ -197,7 +185,6 @@ uvicorn server:app --host 0.0.0.0 --port 8000 --reload
 | **합계** | ~16B | **~33GB** |
 
 A100 80GB 환경에서 여유 있게 동시 운용 가능.
-이미지 생성(SDXL) 시에는 Generator/Safeguard를 CPU로 오프로드 후 SDXL 로드, 생성 완료 후 재로딩하는 방식으로 메모리 관리.
 
 ---
 
