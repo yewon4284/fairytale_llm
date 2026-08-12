@@ -1,0 +1,125 @@
+{
+  "title": "엄마, 고추가 왜 커져요?",
+  "author": "진미옥",
+  "illustrator": "최강",
+  "isbn": "9788929116996",
+  "readAge": "유아",
+  "publishedYear": 2017,
+  "publisher": "글뿌리",
+  "classification": "사회관계",
+  "paragraphInfoCount": 16,
+  "paragraphInfo": [
+    {
+      "srcTextID": "149819",
+      "srcText": "밍밍이에게 고민이 생겼어요. 친구들과 놀고 싶지 않았어요. 사탕과 과자도 먹고 싶지 않았어요. 방에 쪼그리고 앉아서 한숨만 휴우.",
+      "srcPage": 1,
+      "srcSentenceEA": 4,
+      "srcWordEA": 20
+    },
+    {
+      "srcTextID": "149821",
+      "srcText": "도대체 무슨 일일까요? 밍밍이는 친구들과 놀고 있었어요. 흰솜이랑 쿵덕쿵덕 시소를 탔지요. 그때였어요.",
+      "srcPage": 2,
+      "srcSentenceEA": 4,
+      "srcWordEA": 15
+    },
+    {
+      "srcTextID": "149820",
+      "srcText": "\"밍밍아, 나도 같이 타자.\" 몽몽이가 씽씽카를 타고 왔어요. 밍밍이는 기분이 이상해졌어요.",
+      "srcPage": 3,
+      "srcSentenceEA": 3,
+      "srcWordEA": 13
+    },
+    {
+      "srcTextID": "149822",
+      "srcText": "몽몽이를 보자 웃음이 절로 났어요. 얼굴이 화끈화끈, 가슴이 콩닥콩닥. 그리고 갑자기 이상한 일이 벌어졌어요.",
+      "srcPage": 4,
+      "srcSentenceEA": 3,
+      "srcWordEA": 16
+    },
+    {
+      "srcTextID": "149824",
+      "srcText": "고추가 점점 커지면서 딱딱해지는 거예요. '어? 내가 왜 이러지?' 밍밍이는 깜짝 놀라 허둥지둥 시소에서 내렸어요.",
+      "srcPage": 5,
+      "srcSentenceEA": 4,
+      "srcWordEA": 18
+    },
+    {
+      "srcTextID": "149823",
+      "srcText": "\"얘들아, 나 집에 갈게.\" 그리고 후닥닥 집으로 달려와 방문을 쾅! '몽몽이를 봤을 때 왜 고추가 커졌을까? 흰솜이랑 시소를 탔을 때도, 꽃순이랑 그네를 탔을 때도 안 그랬는데.'",
+      "srcPage": 6,
+      "srcSentenceEA": 4,
+      "srcWordEA": 29
+    },
+    {
+      "srcTextID": "149825",
+      "srcText": "밍밍이는 걱정하기 시작했어요. '나쁜 병에 걸린 건 아닐까?' \"엄마, 나 어떡해요!\"",
+      "srcPage": 7,
+      "srcSentenceEA": 3,
+      "srcWordEA": 11
+    },
+    {
+      "srcTextID": "149826",
+      "srcText": "\"밍밍아, 왜 그러니? 놀이터에서 무슨 일 있었니?\" 밍밍이는 울먹이며 부스럭부스럭 바지를 내렸어요.",
+      "srcPage": 8,
+      "srcSentenceEA": 3,
+      "srcWordEA": 14
+    },
+    {
+      "srcTextID": "149827",
+      "srcText": "\"엄마, 내 고추 좀 보세요. 어? 지금은 괜찮네. 아까는 고추가 막 커지고 딱딱해졌단 말이에요.\"",
+      "srcPage": 9,
+      "srcSentenceEA": 4,
+      "srcWordEA": 17
+    },
+    {
+      "srcTextID": "149828",
+      "srcText": "엄마가 상냥하게 물었어요. \"고추가 처음부터 딱딱했었니?\" \"아니요. 몽몽이랑 얘기를 하는데 갑자기 딱딱해졌어요.\"",
+      "srcPage": 10,
+      "srcSentenceEA": 3,
+      "srcWordEA": 13
+    },
+    {
+      "srcTextID": "149829",
+      "srcText": "엄마가 웃으며 밍밍이를 안아 주었어요. \"밍밍이가 몽몽이를 좋아하는구나.\" \"엄마, 얼굴도 막 뜨거워지고, 가슴도 콩닥거렸어요.\"",
+      "srcPage": 11,
+      "srcSentenceEA": 3,
+      "srcWordEA": 14
+    },
+    {
+      "srcTextID": "149830",
+      "srcText": "\"그래, 그게 네가 다 컸다는 증거란다. 또 우리 밍밍이가 몽몽이를 참 좋아하고, 아주 건강한 남자라는 뜻이지.\" 밍밍이가 눈을 동그랗게 떴어요.",
+      "srcPage": 12,
+      "srcSentenceEA": 3,
+      "srcWordEA": 22
+    },
+    {
+      "srcTextID": "149831",
+      "srcText": "\"건강하다고요?\" \"좋아하는 여자 친구를 보면 피가 고추로 빠르게 모인단다. 그래서 작았던 고추가 커지고 딱딱해지는 거란다. 이처럼 피가 우리 몸 곳곳에 잘 돌아다녀야 건강한 거란다.\"",
+      "srcPage": 13,
+      "srcSentenceEA": 3,
+      "srcWordEA": 26
+    },
+    {
+      "srcTextID": "149832",
+      "srcText": "\"작고 말랑말랑한 풍선에 바람을 후후 불면 크고 단단해지는 것처럼요?\" 엄마가 호호 웃으며 고개를 끄덕였어요. \"그래그래, 풍선처럼.\"",
+      "srcPage": 14,
+      "srcSentenceEA": 3,
+      "srcWordEA": 17
+    },
+    {
+      "srcTextID": "149833",
+      "srcText": "그제서야 밍밍이의 얼굴에 웃음이 찾아왔어요. \"휴, 다행이에요! 나는 병이 난 줄 알았거든요. 어서 친구들에게 말해 주어야겠어요.\" 엄마가 뛰어나가는 밍밍이를 불렀어요.",
+      "srcPage": 15,
+      "srcSentenceEA": 5,
+      "srcWordEA": 23
+    },
+    {
+      "srcTextID": "149834",
+      "srcText": "\"밍밍아, 네 몸에서 이상한 일이 일어나면 엄마나 아빠한테 솔직하게 물어보렴.\" \"자, 약속!\" 밍밍이는 엄마와 손가락을 걸고 꼭꼭 약속했답니다.",
+      "srcPage": 16,
+      "srcSentenceEA": 3,
+      "srcWordEA": 19
+    }
+  ]
+}

@@ -1,0 +1,132 @@
+{
+  "title": "\t멋진 집을 지을 거야!",
+  "author": "이루미",
+  "illustrator": "정병수",
+  "isbn": "9788929110598\t",
+  "readAge": "유아",
+  "publishedYear": 2015,
+  "publisher": "글뿌리",
+  "classification": "자연탐구",
+  "paragraphInfoCount": 17,
+  "paragraphInfo": [
+    {
+      "srcTextID": "151374",
+      "srcText": "숲 속에 딱따구리 가족이 살고 있었어요. 어느 날, 엄마 딱따구리가 말했어요. \"얘들아, 이제 너희도 다 컸으니 각자 멋진 집을 지으렴.\"",
+      "srcPage": 1,
+      "srcSentenceEA": 3,
+      "srcWordEA": 21
+    },
+    {
+      "srcTextID": "151373",
+      "srcText": "동물들은 왜 집을 지을까요? 거북이나 달팽이는 집을 등에 지고 다니기 때문에 따로 집을 지을 필요가 없어요. 하지만 다른 동물들은 적을 피하고, 알을 낳고, 새끼를 키우고, 추위나 더위를 막고, 비바람을 피하고자 집을 짓는답니다.",
+      "srcPage": 2,
+      "srcSentenceEA": 3,
+      "srcWordEA": 34
+    },
+    {
+      "srcTextID": "151375",
+      "srcText": "첫째와 둘째는 크고 튼튼한 나무에 집을 지었어요. 그러나 셋째는 집을 짓지 않고 왔다 갔다 했어요. \"난 가장 멋진 집을 지을 거야!\"",
+      "srcPage": 3,
+      "srcSentenceEA": 3,
+      "srcWordEA": 22
+    },
+    {
+      "srcTextID": "151376",
+      "srcText": "셋째는 사람들이 사는 마을로 날아갔어요. 동네방네 기웃기웃. 그러다 어느 집 처마 밑에서 흙무더기를 보았지요. \"저게 뭐지?\" 흙무더기 안으로 고개를 쑥 넣었더니.",
+      "srcPage": 4,
+      "srcSentenceEA": 5,
+      "srcWordEA": 24
+    },
+    {
+      "srcTextID": "151377",
+      "srcText": "어머, 아기 제비들이 입을 쫙쫙. \"아, 제비 집이구나! 진흙으로 만든 집은 너무 평범해.\" 셋째는 휙 날아갔지요.",
+      "srcPage": 5,
+      "srcSentenceEA": 4,
+      "srcWordEA": 18
+    },
+    {
+      "srcTextID": "151378",
+      "srcText": "셋째는 개울가로 푸드덕 날아갔어요. 흙 벼랑에 구멍이 폭폭. \"이게 뭐지?\" 구멍 안으로 고개를 쑥 넣었더니.",
+      "srcPage": 6,
+      "srcSentenceEA": 4,
+      "srcWordEA": 17
+    },
+    {
+      "srcTextID": "151379",
+      "srcText": "어머, 아기 새들이 사이좋게 있지 뭐예요. \"여긴 누구 집이지?\" 그때 엄마 물총새가 소리를 빽 질렀어요. \"왜 남의 집을 엿봐!\" 셋째는 깜짝 놀라 후다닥 도망쳤어요.",
+      "srcPage": 7,
+      "srcSentenceEA": 5,
+      "srcWordEA": 26
+    },
+    {
+      "srcTextID": "151381",
+      "srcText": "\"아, 가장 멋진 집은 어디 있을까?\" 그때 호수 위에 둥둥 떠 있는 집이 보였어요. \"와! 나뭇가지를 엮어 집을 지었네!\"",
+      "srcPage": 8,
+      "srcSentenceEA": 3,
+      "srcWordEA": 21
+    },
+    {
+      "srcTextID": "151382",
+      "srcText": "비버의 집은 왜 물에 있을까요? 비버는 주로 물에서 생활하기 때문에 물 위에 집을 지어요. 토끼처럼 툭 튀어나온 앞니로 나무를 갉아 쓰러뜨려 집을 짓지요.",
+      "srcPage": 9,
+      "srcSentenceEA": 3,
+      "srcWordEA": 25
+    },
+    {
+      "srcTextID": "151384",
+      "srcText": "갑자기 비버가 물 위로 고개를 쑥 내밀었어요. \"여긴 우리 집이야. 구경 시켜 줄까?\"",
+      "srcPage": 10,
+      "srcSentenceEA": 3,
+      "srcWordEA": 14
+    },
+    {
+      "srcTextID": "151383",
+      "srcText": "\"응, 좋아!\" 하지만 비버의 집 문은 물속에 있어요. \"쳇, 난 물속에 들어갈 수 없는걸.\"",
+      "srcPage": 11,
+      "srcSentenceEA": 3,
+      "srcWordEA": 15
+    },
+    {
+      "srcTextID": "151385",
+      "srcText": "셋째는 몹시 힘들고 지쳤어요. \"에고, 힘들어. 저기서 잠시 쉬었다 갈까?\" 셋째는 나무 밑동의 뻥 뚫린 구멍으로 들어갔어요.",
+      "srcPage": 12,
+      "srcSentenceEA": 4,
+      "srcWordEA": 19
+    },
+    {
+      "srcTextID": "151386",
+      "srcText": "\"넌 누구야? 왜 우리 집에 마음대로 들어와!\" 엄마 토끼가 버럭 화를 냈어요. \"미안해요. 몰랐어요.\" 셋째는 얼른 토끼 굴 밖으로 나왔어요.",
+      "srcPage": 13,
+      "srcSentenceEA": 5,
+      "srcWordEA": 24
+    },
+    {
+      "srcTextID": "151387",
+      "srcText": "셋째는 다시 멋진 집을 찾아 나섰지요. 푸드덕. 두리번두리번. 마침 언덕 아래에 커다란 굴이 있었어요. 잽싸게 굴속으로 쏙 들어갔더니.",
+      "srcPage": 14,
+      "srcSentenceEA": 5,
+      "srcWordEA": 22
+    },
+    {
+      "srcTextID": "151388",
+      "srcText": "\"으르렁!\" 갑자기 여우가 무섭게 달려들었어요. \"앗! 살려 줘!\" 셋째는 깜짝 놀라 도망쳤지요.",
+      "srcPage": 15,
+      "srcSentenceEA": 3,
+      "srcWordEA": 15
+    },
+    {
+      "srcTextID": "151389",
+      "srcText": "여우는 어떻게 굴을 팔까요? 여우는 자기가 직접 굴을 파서 살기도 하지만 대부분은 남의 집을 가로채서 살아요. 특히 양지바른 곳에 아늑한 굴을 잘 만드는 오소리나 너구리의 집을 주로 빼앗아요.",
+      "srcPage": 16,
+      "srcSentenceEA": 3,
+      "srcWordEA": 30
+    },
+    {
+      "srcTextID": "151390",
+      "srcText": "셋째는 숲 속으로 돌아왔어요. \"가장 멋진 집은 역시 나무 구멍 집이야!\" 셋째는 나무 구멍을 뚫기 시작했어요. 딱딱, 딱딱, 딱딱. 나무쪼는 소리가 멀리멀리 울려 퍼졌어요.",
+      "srcPage": 17,
+      "srcSentenceEA": 5,
+      "srcWordEA": 27
+    }
+  ]
+}
