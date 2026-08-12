@@ -192,6 +192,89 @@ def print_summary(results):
     print("\n" + "=" * 78)
 
 
+def load_corpus_stories(corpus_dir, classification=None, exclude_filenames=None):
+    """corpus_dir 안의 JSON 동화들을 읽어 (텍스트, 파일명) 리스트로 반환.
+    classification 지정 시 해당 분류만, exclude_filenames 지정 시 그 파일명들은 제외."""
+    import glob
+    from src.data_loader import story_to_text
+
+    exclude_filenames = exclude_filenames or set()
+    texts, names = [], []
+    for fp in sorted(glob.glob(os.path.join(corpus_dir, "*.json"))):
+        fname = os.path.basename(fp)
+        if fname in exclude_filenames:
+            continue
+        try:
+            with open(fp, "r", encoding="utf-8") as f:
+                d = json.load(f)
+        except Exception:
+            continue
+        if classification and d.get("classification") != classification:
+            continue
+        text = story_to_text(d)
+        if text.strip():
+            texts.append(text)
+            names.append(fname)
+    return texts, names
+
+
+def print_compare_to_corpus(results, corpus_dir, classification, exclude_dir):
+    """실제 동화 코퍼스(예: all_data 441편)의 형식 지표와 생성 결과(on/off)를 비교한다.
+    exclude_dir에 들어있는 파일명(퓨샷으로 이미 쓴 것들)은 코퍼스에서 제외해서
+    '모델이 안 본 진짜 동화'와의 비교가 되게 한다. GPU/모델 로딩 불필요."""
+    exclude_filenames = set()
+    if exclude_dir and os.path.isdir(exclude_dir):
+        exclude_filenames = {f for f in os.listdir(exclude_dir) if f.endswith(".json")}
+
+    texts, names = load_corpus_stories(corpus_dir, classification or None, exclude_filenames)
+    if not texts:
+        print(f"'{corpus_dir}'에서 조건(classification={classification!r})에 맞는 동화를 찾지 못했습니다.")
+        return
+
+    metrics_list = [compute_format_metrics(t) for t in texts]
+    corpus_avg, corpus_std = {}, {}
+    for key in FORMAT_METRIC_LABELS:
+        vals = [m[key] for m in metrics_list]
+        corpus_avg[key] = statistics.mean(vals)
+        corpus_std[key] = statistics.stdev(vals) if len(vals) > 1 else 0.0
+
+    label = classification or "전체(분류무관)"
+    excl_note = f", 퓨샷 {len(exclude_filenames)}편 제외" if exclude_filenames else ""
+    print("\n" + "=" * 96)
+    print(f"  실제 동화 코퍼스 비교 — {corpus_dir} / {label} (n={len(texts)}{excl_note})")
+    print("=" * 96)
+    for key, lbl in FORMAT_METRIC_LABELS.items():
+        c, s = corpus_avg[key], corpus_std[key]
+        cv = (s / c * 100) if c else 0
+        print(f"  {lbl:22s} 평균 {c:8.1f}   표준편차 {s:8.1f}   CV {cv:6.1f}%")
+
+    on_rows = [r for r in results if r["condition"] == "few_shot_on"]
+    off_rows = [r for r in results if r["condition"] == "few_shot_off"]
+    if not on_rows and not off_rows:
+        print("\nab_results.json에 생성 결과가 없습니다. 먼저 run_ab_test.py를 실행하세요.")
+        return
+
+    print("\n" + "-" * 96)
+    print("  코퍼스 대비 생성 결과(attempt 1) 비교  — %차이 = (생성평균-코퍼스평균)/코퍼스평균 x 100")
+    print("-" * 96)
+    header = f"  {'지표':20s} {'코퍼스평균':>10s} {'코퍼스CV':>9s} {'ON평균':>10s} {'ON차이':>9s} {'OFF평균':>10s} {'OFF차이':>9s}"
+    print(header)
+    for key, lbl in FORMAT_METRIC_LABELS.items():
+        c = corpus_avg[key]
+        cv = (corpus_std[key] / c * 100) if c else 0
+        on_vals = [row["format_first"][key] for row in on_rows]
+        off_vals = [row["format_first"][key] for row in off_rows]
+        on_mean = statistics.mean(on_vals) if on_vals else 0
+        off_mean = statistics.mean(off_vals) if off_vals else 0
+        on_diff = (on_mean - c) / c * 100 if c else 0
+        off_diff = (off_mean - c) / c * 100 if c else 0
+        print(
+            f"  {lbl:20s} {c:10.1f} {cv:8.1f}% {on_mean:10.1f} {on_diff:+8.1f}% {off_mean:10.1f} {off_diff:+8.1f}%"
+        )
+    print("\n  -> ON/OFF 차이의 절대값이 작을수록 실제(held-out) 동화 형식에 더 가깝다는 뜻입니다.")
+    print("=" * 96)
+
+
 def print_compare_to_reference(results, few_shot_n):
     """퓨샷으로 준 원본 참고 동화 자체의 형식 지표와, 생성 결과(on/off) 평균을 비교한다.
     GPU/모델 로딩 없이 data_sorted만 읽어서 계산 (가벼움)."""
@@ -262,12 +345,24 @@ def main():
     parser.add_argument("--few-shot-n", type=int, default=2)
     parser.add_argument("--summary", action="store_true", help="실행 없이 기존 결과만 집계")
     parser.add_argument("--compare-fewshot", action="store_true",
-                         help="실행 없이 참고 동화 원본과 생성 결과 형식을 비교 (GPU 불필요)")
+                         help="실행 없이 참고 동화 원본(2편)과 생성 결과 형식을 비교 (GPU 불필요)")
+    parser.add_argument("--compare-corpus", action="store_true",
+                         help="실행 없이 실제 동화 코퍼스(예: all_data)와 생성 결과 형식을 비교 (GPU 불필요)")
+    parser.add_argument("--corpus-dir", default="all_data", help="코퍼스 비교에 쓸 폴더")
+    parser.add_argument("--corpus-classification", default="의사소통",
+                         help="코퍼스에서 필터링할 classification. 빈 문자열이면 전체(분류 무관)")
+    parser.add_argument("--exclude-dir", default="data_sorted",
+                         help="코퍼스에서 제외할 파일명이 들어있는 폴더 (퓨샷으로 이미 쓴 파일 제외용)")
     args = parser.parse_args()
 
     if args.compare_fewshot:
         results = load_existing_results(args.output)
         print_compare_to_reference(results, args.few_shot_n)
+        return
+
+    if args.compare_corpus:
+        results = load_existing_results(args.output)
+        print_compare_to_corpus(results, args.corpus_dir, args.corpus_classification, args.exclude_dir)
         return
 
     if args.summary:

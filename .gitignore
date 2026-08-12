@@ -11,6 +11,9 @@ data/
 *.pth
 test_data/
 test_data/
+all_data/
+ab_results.json
+ab_test.log
 venv/
 .venv/
 __pycache__/
