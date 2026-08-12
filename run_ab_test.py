@@ -192,6 +192,66 @@ def print_summary(results):
     print("\n" + "=" * 78)
 
 
+def print_compare_to_reference(results, few_shot_n):
+    """퓨샷으로 준 원본 참고 동화 자체의 형식 지표와, 생성 결과(on/off) 평균을 비교한다.
+    GPU/모델 로딩 없이 data_sorted만 읽어서 계산 (가벼움)."""
+    from src.data_loader import get_reference_stories
+
+    refs = get_reference_stories(n=few_shot_n, classification="의사소통")
+    if not refs:
+        print("참고 동화를 불러오지 못했습니다 (data_sorted 확인 필요).")
+        return
+
+    print("\n" + "=" * 90)
+    print("  퓨샷 참고 동화(원본) vs 생성 결과 형식 비교")
+    print("=" * 90)
+
+    ref_metrics_list = []
+    for i, ref in enumerate(refs, 1):
+        text = ref.get("text", "").strip()
+        m = compute_format_metrics(text)
+        ref_metrics_list.append(m)
+        print(f"\n[참고 동화 {i}] {ref.get('title', '(제목 없음)')}")
+        for key, label in FORMAT_METRIC_LABELS.items():
+            print(f"  {label}: {m[key]}")
+
+    ref_avg = {
+        key: statistics.mean(m[key] for m in ref_metrics_list)
+        for key in FORMAT_METRIC_LABELS
+    }
+    print(f"\n[참고 동화 평균]  (n={len(ref_metrics_list)})")
+    for key, label in FORMAT_METRIC_LABELS.items():
+        print(f"  {label}: {ref_avg[key]:.1f}")
+
+    on_rows = [r for r in results if r["condition"] == "few_shot_on"]
+    off_rows = [r for r in results if r["condition"] == "few_shot_off"]
+    if not on_rows and not off_rows:
+        print("\nab_results.json에 생성 결과가 없습니다. 먼저 run_ab_test.py를 실행하세요.")
+        return
+
+    print("\n" + "-" * 90)
+    print("  참고 동화 대비 생성 결과(attempt 1) 비교  — %차이 = (생성평균-참고동화)/참고동화 x 100")
+    print("-" * 90)
+    header = f"  {'지표':20s} {'참고동화':>10s} {'퓨샷ON평균':>12s} {'ON 차이':>10s} {'퓨샷OFF평균':>12s} {'OFF 차이':>10s}"
+    print(header)
+    print("  " + "-" * (len(header) - 2))
+    for key, label in FORMAT_METRIC_LABELS.items():
+        r = ref_avg[key]
+        on_vals = [row["format_first"][key] for row in on_rows]
+        off_vals = [row["format_first"][key] for row in off_rows]
+        on_mean = statistics.mean(on_vals) if on_vals else 0
+        off_mean = statistics.mean(off_vals) if off_vals else 0
+        on_diff = (on_mean - r) / r * 100 if r else 0
+        off_diff = (off_mean - r) / r * 100 if r else 0
+        print(
+            f"  {label:20s} {r:10.1f} {on_mean:12.1f} {on_diff:+9.1f}% {off_mean:12.1f} {off_diff:+9.1f}%"
+        )
+
+    print("\n  -> ON 차이의 절대값이 OFF 차이의 절대값보다 작을수록,")
+    print("     퓨샷이 실제로 참고 동화의 형식 쪽으로 생성 결과를 끌어당겼다는 뜻입니다.")
+    print("=" * 90)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--topics", default="test_topics.json")
@@ -201,7 +261,14 @@ def main():
     parser.add_argument("--no-safeguard", action="store_true")
     parser.add_argument("--few-shot-n", type=int, default=2)
     parser.add_argument("--summary", action="store_true", help="실행 없이 기존 결과만 집계")
+    parser.add_argument("--compare-fewshot", action="store_true",
+                         help="실행 없이 참고 동화 원본과 생성 결과 형식을 비교 (GPU 불필요)")
     args = parser.parse_args()
+
+    if args.compare_fewshot:
+        results = load_existing_results(args.output)
+        print_compare_to_reference(results, args.few_shot_n)
+        return
 
     if args.summary:
         results = load_existing_results(args.output)
