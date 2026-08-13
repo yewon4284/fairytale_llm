@@ -437,6 +437,84 @@ def bh_fdr(pvals):
     return [qvals.get(i) for i in range(len(pvals))]
 
 
+def _betacf(a, b, x, max_iter=200, eps=1e-10):
+    """정규화 불완전베타함수용 연분수 전개 (Numerical Recipes 방식). t분포 CDF 계산에 씀."""
+    qab = a + b
+    qap = a + 1.0
+    qam = a - 1.0
+    c = 1.0
+    d = 1.0 - qab * x / qap
+    if abs(d) < 1e-30:
+        d = 1e-30
+    d = 1.0 / d
+    h = d
+    for m in range(1, max_iter + 1):
+        m2 = 2 * m
+        aa = m * (b - m) * x / ((qam + m2) * (a + m2))
+        d = 1.0 + aa * d
+        if abs(d) < 1e-30:
+            d = 1e-30
+        c = 1.0 + aa / c
+        if abs(c) < 1e-30:
+            c = 1e-30
+        d = 1.0 / d
+        h *= d * c
+        aa = -(a + m) * (qab + m) * x / ((a + m2) * (qap + m2))
+        d = 1.0 + aa * d
+        if abs(d) < 1e-30:
+            d = 1e-30
+        c = 1.0 + aa / c
+        if abs(c) < 1e-30:
+            c = 1e-30
+        d = 1.0 / d
+        delta = d * c
+        h *= delta
+        if abs(delta - 1.0) < eps:
+            break
+    return h
+
+
+def _ibeta(x, a, b):
+    """정규화 불완전베타함수 I_x(a,b). scipy 없이 t분포 p값 계산용."""
+    if x <= 0:
+        return 0.0
+    if x >= 1:
+        return 1.0
+    ln_beta = math.lgamma(a + b) - math.lgamma(a) - math.lgamma(b)
+    front = math.exp(ln_beta + a * math.log(x) + b * math.log(1 - x))
+    if x < (a + 1) / (a + b + 2):
+        return front * _betacf(a, b, x) / a
+    return 1.0 - front * _betacf(b, a, 1 - x) / b
+
+
+def t_dist_sf(t_abs, df):
+    """t분포 양측꼬리확률 P(|T|>t_abs). scipy 없이 정규화 불완전베타함수로 계산
+    (표준 결과: p = I_{df/(df+t^2)}(df/2, 1/2))."""
+    x = df / (df + t_abs * t_abs)
+    return _ibeta(x, df / 2.0, 0.5)
+
+
+def pearson_corr_test(xs, ys):
+    """피어슨 상관계수 + t검정 기반 양측 p값 (scipy 없이). 반환: (r, p 또는 None, n)."""
+    n = len(xs)
+    if n < 3:
+        return 0.0, None, n
+    mean_x, mean_y = statistics.mean(xs), statistics.mean(ys)
+    sxy = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys))
+    sxx = sum((x - mean_x) ** 2 for x in xs)
+    syy = sum((y - mean_y) ** 2 for y in ys)
+    if sxx == 0 or syy == 0:
+        return 0.0, None, n
+    r = sxy / math.sqrt(sxx * syy)
+    r = max(-0.999999, min(0.999999, r))
+    df = n - 2
+    if df < 1:
+        return r, None, n
+    t_stat = r * math.sqrt(df / (1 - r * r))
+    p = t_dist_sf(abs(t_stat), df)
+    return r, p, n
+
+
 def cv_permutation_test(vals_a, vals_b, n_perm=5000, seed=123):
     """두 그룹 간 CV(변동계수) 차이가 우연히 나올 수 있는 크기인지 라벨 셔플 순열검정으로 확인.
     scipy의 Levene/Brown-Forsythe 등분산검정 대신 분포 가정 없이 쓸 수 있는 비모수 대안.
@@ -679,9 +757,12 @@ def print_extended_analysis(results, corpus_dir, cv_threshold=60.0, ref_conditio
     print("#" * 100)
 
 
-def build_fewshot_text(dir_path, n=2, seed=42, classification=None):
+def sample_fewshot_candidates(dir_path, n=2, seed=42, classification=None):
     """dir_path 안 JSON 동화들에서 (classification 지정 시 그것만 필터링 후) n편을 seed 고정으로
-    무작위 추출해 퓨샷 프롬프트 텍스트로 합친다. main.py의 load_few_shot()과 동일한 포맷."""
+    무작위 추출해 (title, text) 리스트로 반환. build_fewshot_text의 샘플링 로직을 그대로 뽑아낸 것 —
+    실행 당시(생성 시) 실제로 어떤 예시가 뽑혔는지 동일한 seed 공식으로 재현할 때(용량-반응 분석 등)
+    build_fewshot_text와 동일한 결과가 나오도록 로직을 한 곳에서만 관리한다.
+    반환: (candidates, pool_n) — pool_n은 샘플링 전 풀 크기."""
     import glob
     import random as _random
     from src.data_loader import story_to_text
@@ -703,6 +784,13 @@ def build_fewshot_text(dir_path, n=2, seed=42, classification=None):
     if n is not None and n < len(candidates):
         rnd = _random.Random(seed)
         candidates = rnd.sample(candidates, n)
+    return candidates, pool_n
+
+
+def build_fewshot_text(dir_path, n=2, seed=42, classification=None):
+    """dir_path 안 JSON 동화들에서 (classification 지정 시 그것만 필터링 후) n편을 seed 고정으로
+    무작위 추출해 퓨샷 프롬프트 텍스트로 합친다. main.py의 load_few_shot()과 동일한 포맷."""
+    candidates, pool_n = sample_fewshot_candidates(dir_path, n=n, seed=seed, classification=classification)
 
     lines = []
     titles = []
@@ -711,6 +799,70 @@ def build_fewshot_text(dir_path, n=2, seed=42, classification=None):
         lines.append(f"{header}\n{text}")
         titles.append(title or f"(제목없음 #{i})")
     return "\n\n".join(lines), pool_n, titles
+
+
+def print_dose_response_analysis(results, fewshot_seed_base=42, few_shot_n=2,
+                                  fewshot_dir="data_sorted", extra_condition=None, extra_fewshot_dir=None):
+    """용량-반응(dose-response) 검증: 그룹 평균 비교가 아니라, 그 '주제'에서 실제로 뽑힌
+    참고동화 예시 자체의 형식 지표가 클수록/작을수록 생성된 동화의 형식 지표도 따라서
+    커지는지/작아지는지를 본다 (개별 시행 단위 인과 증거 — 훨씬 직접적).
+
+    실행 시점의 퓨샷 샘플링은 seed = fewshot_seed_base + topic_id 로 완전히 결정론적이었으므로,
+    같은 (dir_path, seed, n) 조합으로 sample_fewshot_candidates를 다시 부르면 그때 실제로
+    뽑혔던 예시와 정확히 동일한 예시를 얻는다 — 새로 생성할 필요가 전혀 없다.
+    GPU/모델 로딩 불필요."""
+    extra_condition = extra_condition or []
+    extra_fewshot_dir = extra_fewshot_dir or []
+    condition_dirs = {"few_shot_on": fewshot_dir}
+    for c, d in zip(extra_condition, extra_fewshot_dir):
+        condition_dirs[c] = d
+
+    all_conditions = sorted(set(r["condition"] for r in results))
+    conditions_to_test = [c for c in condition_dirs if c in all_conditions]
+    if not conditions_to_test:
+        print("\n분석할 퓨샷 조건이 없습니다. --fewshot-dir/--extra-condition/--extra-fewshot-dir를 "
+              "실제 생성 때 썼던 값과 동일하게 맞춰주세요.")
+        return
+
+    print("\n" + "#" * 100)
+    print("  용량-반응(dose-response) 검증 — 그 주제에 뽑힌 참고동화 예시의 형식이")
+    print("  생성된 동화의 형식과 상관관계가 있는가 (그룹평균 비교가 아니라 개별 시행 단위 인과 검증)")
+    print("#" * 100)
+
+    tests = []  # (cond, metric, r, p, n)
+    for cond in conditions_to_test:
+        dir_path = condition_dirs[cond]
+        rows = [r for r in results if r["condition"] == cond]
+        for metric in CORE_COMPARISON_METRICS:
+            xs, ys = [], []
+            for r in rows:
+                tid = r["topic_id"]
+                seed = fewshot_seed_base + tid
+                candidates, _ = sample_fewshot_candidates(dir_path, n=few_shot_n, seed=seed, classification=None)
+                if not candidates:
+                    continue
+                ex_vals = [compute_format_metrics(text)[metric] for _, text in candidates]
+                xs.append(statistics.mean(ex_vals))  # 그 주제에 뽑힌 예시들의 평균 형식값
+                ys.append(r["format_first"][metric])  # 생성된 동화의 형식값
+            r_val, p_val, n_eff = pearson_corr_test(xs, ys)
+            tests.append({"cond": cond, "metric": metric, "r": r_val, "p": p_val, "n": n_eff, "dir": dir_path})
+
+    qvals = bh_fdr([t["p"] for t in tests])
+    for t, q in zip(tests, qvals):
+        label = FORMAT_METRIC_LABELS[t["metric"]]
+        if t["p"] is None:
+            reason = "표본 부족" if t["n"] < 3 else "예시값 또는 생성값에 분산이 없음(상수값)"
+            print(f"  [{t['cond']}] [{label}] {reason}(n={t['n']}) — 검정 생략")
+            continue
+        sig = "*" if q is not None and q < 0.05 else " "
+        print(f"  [{t['cond']:14s}] [{label:18s}] 예시평균값 -> 생성값  "
+              f"r={t['r']:+.3f}  p={t['p']:.4f}  q(FDR)={q:.4f}{sig}  (n={t['n']}, 소스={t['dir']})")
+
+    print("\n  해석: r>0이고 q<0.05면, 그 주제에 뽑힌 퓨샷 예시가 길/짧을수록 생성된 동화도")
+    print("  따라서 길어지고/짧아진다는 뜻 — 그룹평균 비교보다 직접적인 인과 증거입니다.")
+    print("  주의: 이 검정에 쓰인 예시 복원은 --fewshot-dir/--extra-condition/--extra-fewshot-dir/")
+    print("  --fewshot-seed-base/--few-shot-n 값이 실제 생성 실행 때와 정확히 같아야 정확합니다.")
+    print("#" * 100)
 
 
 def load_corpus_stories(corpus_dir, classification=None, exclude_filenames=None):
@@ -973,6 +1125,10 @@ def main():
                               "여러 번 줄 수 있음 (기본: few_shot_on 하나만)")
     parser.add_argument("--cv-perm", type=int, default=5000, help="--extended-analysis 표C의 순열검정 반복 횟수")
     parser.add_argument("--cv-seed", type=int, default=123, help="--extended-analysis 표C의 순열검정 시드")
+    parser.add_argument("--dose-response", action="store_true",
+                         help="실행 없이 용량-반응 검증(그 주제에 뽑힌 퓨샷 예시의 형식지표 vs 생성된 동화의 "
+                              "형식지표 상관관계)을 출력. --fewshot-dir/--extra-condition/--extra-fewshot-dir/"
+                              "--fewshot-seed-base/--few-shot-n을 실제 생성 실행 때와 동일하게 줘야 함 (GPU 불필요)")
     args = parser.parse_args()
 
     if len(args.extra_condition) != len(args.extra_fewshot_dir):
@@ -1016,6 +1172,14 @@ def main():
         print_extended_analysis(
             results, args.corpus_dir, cv_threshold=args.cv_threshold, ref_condition=args.ref_condition,
             primary_conditions=primary, cv_perm=args.cv_perm, cv_seed=args.cv_seed,
+        )
+        return
+
+    if args.dose_response:
+        results = load_existing_results(args.output)
+        print_dose_response_analysis(
+            results, fewshot_seed_base=args.fewshot_seed_base, few_shot_n=args.few_shot_n,
+            fewshot_dir=args.fewshot_dir, extra_condition=args.extra_condition, extra_fewshot_dir=args.extra_fewshot_dir,
         )
         return
 
