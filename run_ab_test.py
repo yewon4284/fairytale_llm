@@ -160,10 +160,12 @@ def compute_format_metrics(story: str) -> dict:
     }
 
 
-def summarize_pipeline_result(topic_id, condition, request, result, elapsed):
+def summarize_pipeline_result(topic_id, condition, request, result, elapsed, fewshot_titles=None):
     """PipelineResult -> 저장용 dict.
-    format_first  : attempt 1(원본, 재작성 전) 기준 형식 지표 — 퓨샷 효과 비교용 핵심 데이터
-    format_final  : 최종 채택본 기준 형식 지표 — 참고용
+    format_first    : attempt 1(원본, 재작성 전) 기준 형식 지표 — 퓨샷 효과 비교용 핵심 데이터
+    format_final    : 최종 채택본 기준 형식 지표 — 참고용
+    fewshot_titles  : 이번 생성에 실제로 사용된 참고 동화 제목들 (주제마다 다시 뽑으므로 매번 다를 수 있음,
+                       추적/디버깅용 — 예: 어떤 조건에서 이상한 참고동화가 뽑혔는지 나중에 확인 가능)
     """
     first_rec = next((r for r in result.attempts if r.attempt == 1), None)
     best_rec = next((r for r in result.attempts if r.attempt == result.best_attempt), None)
@@ -189,6 +191,7 @@ def summarize_pipeline_result(topic_id, condition, request, result, elapsed):
         "format_final": compute_format_metrics(result.final_story),
         "first_story": first_story,
         "final_story": result.final_story,
+        "fewshot_titles": fewshot_titles or [],
     }
 
 
@@ -521,10 +524,12 @@ def build_fewshot_text(dir_path, n=2, seed=42, classification=None):
         candidates = rnd.sample(candidates, n)
 
     lines = []
+    titles = []
     for i, (title, text) in enumerate(candidates, 1):
         header = f"[참고 동화 {i}] {title}" if title else f"[참고 동화 {i}]"
         lines.append(f"{header}\n{text}")
-    return "\n\n".join(lines), pool_n
+        titles.append(title or f"(제목없음 #{i})")
+    return "\n\n".join(lines), pool_n, titles
 
 
 def load_corpus_stories(corpus_dir, classification=None, exclude_filenames=None):
@@ -746,6 +751,9 @@ def main():
     parser.add_argument("--few-shot-n", type=int, default=2)
     parser.add_argument("--fewshot-dir", default="data_sorted",
                          help="few_shot_on(기본 퓨샷) 조건의 소스 폴더 (기본 data_sorted, 카테고리 필터 없이 전체에서 샘플)")
+    parser.add_argument("--fewshot-seed-base", type=int, default=42,
+                         help="퓨샷 샘플링 시드 기준값. 주제마다 (이 값 + topic_id)로 다르게 샘플링해서 "
+                              "고정된 예시 1쌍이 아니라 소스 폴더 전체 다양성이 반영되게 함 (기본 42)")
     parser.add_argument("--summary", action="store_true", help="실행 없이 기존 결과만 집계")
     parser.add_argument("--compare-fewshot", action="store_true",
                          help="실행 없이 참고 동화 원본(2편)과 생성 결과 형식을 비교 (GPU 불필요)")
@@ -860,29 +868,23 @@ def main():
 
     evaluator = SolarEvaluator(api_key=api_key)
 
-    # 퓨샷 텍스트 준비 — data_sorted(카테고리 4개씩 20편, 골고루) 전체에서 seed=42로 n편 무작위 샘플.
-    # (예전엔 get_reference_stories(classification="의사소통") 필터가 걸려있어서
-    #  실제로는 20편 중 의사소통 4편짜리 풀로만 좁혀져 뽑혔던 버그 — classification=None으로 수정)
-    few_shot_text, fewshot_pool_n = build_fewshot_text(args.fewshot_dir, n=args.few_shot_n, classification=None)
-    logger.info(f"퓨샷 {args.few_shot_n}편 로드 완료 ({args.fewshot_dir} 풀 {fewshot_pool_n}편 중 무작위 샘플, {len(few_shot_text)}자)")
-    if not few_shot_text:
-        logger.warning(f"퓨샷 텍스트가 비어있습니다 — {args.fewshot_dir} 폴더를 확인하세요.")
-
-    pipelines = {
-        "few_shot_on": FairyTalePipeline(generator, safeguard, evaluator, few_shot_text=few_shot_text),
-        "few_shot_off": FairyTalePipeline(generator, safeguard, evaluator, few_shot_text=""),
+    # 퓨샷 소스 폴더 설정: 조건 이름 -> 폴더 경로 (few_shot_off는 None = 퓨샷 없음)
+    # 예전엔 조건당 한 번만 n편을 뽑아 모든 주제에 재사용했는데(고정 1쌍짜리 실험이 되어버리는 문제),
+    # 지금은 주제마다 (--fewshot-seed-base + topic_id)로 새로 무작위 샘플링해서
+    # 소스 풀 전체의 다양성이 결과에 반영되도록 한다.
+    condition_fewshot_dirs = {
+        "few_shot_on": args.fewshot_dir,
+        "few_shot_off": None,
     }
-    conditions = list(CONDITIONS)
-
     for extra_condition, extra_dir in zip(args.extra_condition, args.extra_fewshot_dir):
-        extra_text, extra_n = build_fewshot_text(extra_dir, n=args.few_shot_n)
-        logger.info(f"[{extra_condition}] 퓨샷 소스: {extra_dir} (풀 {extra_n}편 중 {args.few_shot_n}편 샘플, {len(extra_text)}자)")
-        if not extra_text:
-            logger.warning(f"{extra_dir}에서 퓨샷 텍스트를 만들지 못했습니다.")
-        pipelines[extra_condition] = FairyTalePipeline(
-            generator, safeguard, evaluator, few_shot_text=extra_text
-        )
-        conditions.append(extra_condition)
+        condition_fewshot_dirs[extra_condition] = extra_dir
+    conditions = list(condition_fewshot_dirs.keys())
+
+    logger.info(
+        f"퓨샷은 주제마다 새로 샘플링 (n={args.few_shot_n}, seed=fewshot_seed_base+topic_id, "
+        f"base={args.fewshot_seed_base}) — 조건별 폴더: "
+        + ", ".join(f"{c}={d or '(퓨샷 없음)'}" for c, d in condition_fewshot_dirs.items())
+    )
 
     results = load_existing_results(args.output)
     done = {(r["topic_id"], r["condition"]) for r in results}
@@ -898,11 +900,27 @@ def main():
             if (tid, condition) in done:
                 continue
             run_idx += 1
-            logger.info(f"[{run_idx}/{total_runs}] topic {tid} ({condition}) 시작 — {request}")
+
+            fewshot_dir = condition_fewshot_dirs[condition]
+            fewshot_titles = []
+            if fewshot_dir:
+                seed = args.fewshot_seed_base + tid
+                few_shot_text, pool_n, fewshot_titles = build_fewshot_text(
+                    fewshot_dir, n=args.few_shot_n, seed=seed, classification=None
+                )
+                if not few_shot_text:
+                    logger.warning(f"topic {tid} ({condition}): {fewshot_dir}에서 퓨샷 텍스트를 만들지 못했습니다.")
+            else:
+                few_shot_text = ""
+
+            pipeline = FairyTalePipeline(generator, safeguard, evaluator, few_shot_text=few_shot_text)
+
+            titles_note = f"  [퓨샷: {', '.join(fewshot_titles)}]" if fewshot_titles else ""
+            logger.info(f"[{run_idx}/{total_runs}] topic {tid} ({condition}) 시작 — {request}{titles_note}")
 
             start = time.time()
             try:
-                result = pipelines[condition].run(request)
+                result = pipeline.run(request)
             except ValueError as e:
                 logger.warning(f"topic {tid} ({condition}) 편향 단어 감지, 스킵: {e}")
                 continue
@@ -911,7 +929,7 @@ def main():
                 continue
             elapsed = time.time() - start
 
-            record = summarize_pipeline_result(tid, condition, request, result, elapsed)
+            record = summarize_pipeline_result(tid, condition, request, result, elapsed, fewshot_titles=fewshot_titles)
             results.append(record)
             save_results(args.output, results)
 
