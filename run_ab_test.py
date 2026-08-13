@@ -33,6 +33,9 @@ test_topics.json에 있는 각 주제에 대해
 
     # 조건별 |원본기준값-생성값| paired Wilcoxon 검정 + FDR 보정 (기준: few_shot_off)
     python run_ab_test.py --paired-test --corpus-dir all_data
+
+    # 표 A~D(전체묶음FDR / 질문구조분리FDR / CV순열검정 / 결합z거리검정) 한 번에 출력
+    python run_ab_test.py --extended-analysis --corpus-dir all_data
 """
 
 import argparse
@@ -434,6 +437,78 @@ def bh_fdr(pvals):
     return [qvals.get(i) for i in range(len(pvals))]
 
 
+def cv_permutation_test(vals_a, vals_b, n_perm=5000, seed=123):
+    """두 그룹 간 CV(변동계수) 차이가 우연히 나올 수 있는 크기인지 라벨 셔플 순열검정으로 확인.
+    scipy의 Levene/Brown-Forsythe 등분산검정 대신 분포 가정 없이 쓸 수 있는 비모수 대안.
+    반환: (관측된 CV차이(a-b), 양측 p값)"""
+    import random as _random
+
+    def _cv(vals):
+        _, _, cv = _mean_std_cv(vals)
+        return cv
+
+    obs = _cv(vals_a) - _cv(vals_b)
+    combined = list(vals_a) + list(vals_b)
+    na = len(vals_a)
+    rnd = _random.Random(seed)
+    count = 0
+    for _ in range(n_perm):
+        rnd.shuffle(combined)
+        pa = combined[:na]
+        pb = combined[na:]
+        d = _cv(pa) - _cv(pb)
+        if abs(d) >= abs(obs) - 1e-9:
+            count += 1
+    p = (count + 1) / (n_perm + 1)  # add-one smoothing (p=0 방지)
+    return obs, p
+
+
+def compute_paired_test_results(results, baseline, ref_condition, conditions):
+    """metric x condition 조합별로 |생성값-원본기준값| paired 편차 차이를 Wilcoxon으로 검정.
+    print_paired_stats의 핵심 로직을 재사용 가능하도록 뽑아낸 버전 (FDR 묶음을 호출측에서 자유롭게 정할 수 있게)."""
+    out = []
+    for metric in CORE_COMPARISON_METRICS:
+        target = baseline[metric]
+        ref_by_tid = {
+            r["topic_id"]: r["format_first"][metric]
+            for r in results if r["condition"] == ref_condition
+        }
+        for cond in conditions:
+            cond_by_tid = {
+                r["topic_id"]: r["format_first"][metric]
+                for r in results if r["condition"] == cond
+            }
+            common = sorted(set(ref_by_tid) & set(cond_by_tid))
+            diffs = [
+                abs(cond_by_tid[t] - target) - abs(ref_by_tid[t] - target)
+                for t in common
+            ]
+            res = wilcoxon_signed_rank(diffs)
+            median_diff = statistics.median(diffs) if diffs else None
+            out.append({"metric": metric, "cond": cond, "res": res, "median_diff": median_diff, "npair": len(common)})
+    return out
+
+
+def _print_narrative_fdr_table(tests, ref_condition):
+    """compute_paired_test_results()가 반환한 tests 리스트를 받아 그 안에서만 BH-FDR을 적용해 출력.
+    print_paired_stats의 출력 형식과 동일 (표 A/B를 나란히 비교할 수 있게)."""
+    pvals = [t["res"]["p"] if t["res"] else None for t in tests]
+    qvals = bh_fdr(pvals)
+    for t, q in zip(tests, qvals):
+        label = FORMAT_METRIC_LABELS[t["metric"]]
+        cond, res, median_diff, npair = t["cond"], t["res"], t["median_diff"], t["npair"]
+        if res is None:
+            print(f"  [{label}] {cond} vs {ref_condition}: 짝지어진 표본 부족(n={npair}) — 검정 생략")
+            continue
+        direction = "원본에 더 가까움" if median_diff < 0 else ("원본에서 더 멂" if median_diff > 0 else "차이 없음")
+        sig = "*" if (q is not None and q < 0.05) else " "
+        print(
+            f"  [{label}] {cond:14s} vs {ref_condition:14s}  n={res['n']:3d}  "
+            f"z={res['z']:+6.2f}  p={res['p']:.4f}  q(FDR)={q:.4f}{sig}  "
+            f"median(|편차A|-|편차B|)={median_diff:+7.1f}  -> {cond}가 {direction}"
+        )
+
+
 def print_paired_stats(results, corpus_dir, cv_threshold=60.0, ref_condition="few_shot_off"):
     """조건별로 '원본 기준값에서 얼마나 벗어났는지(절대편차)'를 주제 단위로 짝지어(paired)
     ref_condition과 비교하는 Wilcoxon 부호순위검정 + BH-FDR 다중비교 보정. GPU/모델 로딩 불필요.
@@ -496,6 +571,112 @@ def print_paired_stats(results, corpus_dir, cv_threshold=60.0, ref_condition="fe
     print("\n  * = q<0.05 (FDR 보정 후에도 유의). median 값이 음수면 해당 조건이 기준 조건보다 원본에 더 가깝다는 뜻.")
     print(f"  참고: 표본 수가 작으면(n<20~30) 검정력이 낮아 유의하지 않아도 실제 효과가 없다는 뜻은 아닙니다.")
     print("=" * 100)
+
+
+def print_extended_analysis(results, corpus_dir, cv_threshold=60.0, ref_condition="few_shot_off",
+                             primary_conditions=("few_shot_on",), cv_perm=5000, cv_seed=123):
+    """표 A~D를 한 번에 출력.
+      표 A: 기존 방식 그대로 — 조건x지표 전부(6개) 한 묶음 FDR (print_paired_stats 재사용)
+      표 B: 연구질문별로 묶음을 나눠 FDR — confirmatory(퓨샷 on/off) vs exploratory(카테고리별 퓨샷).
+            주의: 이 묶음 구분은 결과를 이미 본 뒤 이번 실행에서 정의한 것이라 사후적(post-hoc)이다.
+            확증적 근거로 쓰려면 이 구분을 방법론에 먼저 명시하고 재현해야 함 — 여기서는 참고용 재해석.
+      표 C: 평균 근접성이 아니라 '퍼짐 정도(CV)' 자체를 비교하는 순열검정 — 표 A/B와 완전히 다른 지표.
+      표 D: avg_paragraph_len + dialogue_ratio를 z-점수로 합친 복합거리로 검정 수를 줄여 검정력을 높인 버전.
+    GPU/모델 로딩 불필요."""
+    baseline, _, _ = compute_corpus_baseline(corpus_dir, cv_threshold=cv_threshold)
+    all_conditions = sorted(set(r["condition"] for r in results))
+    if ref_condition not in all_conditions:
+        print(f"\n기준 조건 '{ref_condition}'의 데이터가 ab_results.json에 없습니다.")
+        return
+    other_conditions = [c for c in all_conditions if c != ref_condition]
+    if not other_conditions:
+        print("\n비교할 다른 조건이 없습니다.")
+        return
+
+    print("\n" + "#" * 100)
+    print("  [표 A] 전체 6개 검정 한 묶음 FDR (기존 --paired-test와 동일한 방식)")
+    print("#" * 100)
+    print_paired_stats(results, corpus_dir, cv_threshold=cv_threshold, ref_condition=ref_condition)
+
+    print("\n" + "#" * 100)
+    print("  [표 B] 연구질문별 분리 FDR — confirmatory(퓨샷 on/off) / exploratory(카테고리별 퓨샷)")
+    print("  주의: 이 구분은 결과를 본 뒤 사후적으로 나눈 것 — 확증적 근거로는 약하고 탐색적 재해석용")
+    print("#" * 100)
+    primary = [c for c in other_conditions if c in primary_conditions]
+    secondary = [c for c in other_conditions if c not in primary_conditions]
+    if primary:
+        print(f"\n  (B-1) Confirmatory: {', '.join(primary)} vs {ref_condition}  "
+              f"(핵심지표 {len(CORE_COMPARISON_METRICS)}개만 묶어 보정)")
+        tests_primary = compute_paired_test_results(results, baseline, ref_condition, primary)
+        _print_narrative_fdr_table(tests_primary, ref_condition)
+    if secondary:
+        print(f"\n  (B-2) Exploratory: {', '.join(secondary)} vs {ref_condition}  (별도 묶음으로 보정)")
+        tests_secondary = compute_paired_test_results(results, baseline, ref_condition, secondary)
+        _print_narrative_fdr_table(tests_secondary, ref_condition)
+
+    print("\n" + "#" * 100)
+    print(f"  [표 C] 변동계수(CV) 차이 순열검정 (n_perm={cv_perm}) — 값이 낮을수록 더 일정하게 생성됨")
+    print(f"  귀무가설: {ref_condition}과 비교 조건의 CV(퍼짐 정도)에 차이가 없다 (라벨 셔플 순열검정, 분포가정 없음)")
+    print("#" * 100)
+    cv_tests = []
+    for metric in CORE_COMPARISON_METRICS:
+        ref_vals = [r["format_first"][metric] for r in results if r["condition"] == ref_condition]
+        for cond in other_conditions:
+            cond_vals = [r["format_first"][metric] for r in results if r["condition"] == cond]
+            obs_diff, p = cv_permutation_test(cond_vals, ref_vals, n_perm=cv_perm, seed=cv_seed)
+            cv_tests.append({"metric": metric, "cond": cond, "obs_diff": obs_diff, "p": p})
+    cv_qvals = bh_fdr([t["p"] for t in cv_tests])
+    print(f"\n  {'지표':20s} {'조건':14s} {'CV차이(조건-기준,%p)':>20s} {'p':>8s} {'q(FDR)':>8s}")
+    for t, q in zip(cv_tests, cv_qvals):
+        label = FORMAT_METRIC_LABELS[t["metric"]]
+        sig = "*" if q < 0.05 else " "
+        direction = "더 일정함" if t["obs_diff"] < 0 else ("덜 일정함" if t["obs_diff"] > 0 else "동일")
+        print(f"  {label:20s} {t['cond']:14s} {t['obs_diff']:+20.1f} {t['p']:8.4f} {q:8.4f}{sig}  "
+              f"-> {t['cond']}가 {ref_condition}보다 {direction}")
+
+    print("\n" + "#" * 100)
+    print("  [표 D] 두 핵심지표 결합 z-거리 paired 검정 (검정 수를 줄여 검정력을 높이는 목적)")
+    print(f"  거리 척도(스케일)는 {ref_condition}의 표준편차를 사용")
+    print("#" * 100)
+    scale = {}
+    for m in CORE_COMPARISON_METRICS:
+        vals = [r["format_first"][m] for r in results if r["condition"] == ref_condition]
+        scale[m] = statistics.stdev(vals) if len(vals) > 1 else 1.0
+
+    def _dist(r):
+        z2 = 0.0
+        for m in CORE_COMPARISON_METRICS:
+            z = (r["format_first"][m] - baseline[m]) / scale[m] if scale[m] else 0.0
+            z2 += z * z
+        return math.sqrt(z2)
+
+    ref_dist_by_tid = {r["topic_id"]: _dist(r) for r in results if r["condition"] == ref_condition}
+    d_tests = []
+    for cond in other_conditions:
+        cond_dist_by_tid = {r["topic_id"]: _dist(r) for r in results if r["condition"] == cond}
+        common = sorted(set(ref_dist_by_tid) & set(cond_dist_by_tid))
+        diffs = [cond_dist_by_tid[t] - ref_dist_by_tid[t] for t in common]
+        res = wilcoxon_signed_rank(diffs)
+        median_diff = statistics.median(diffs) if diffs else None
+        d_tests.append({"cond": cond, "res": res, "median_diff": median_diff, "npair": len(common)})
+    d_qvals = bh_fdr([t["res"]["p"] if t["res"] else None for t in d_tests])
+    print(f"\n  {'조건':14s} {'n':>4s} {'z':>7s} {'p':>8s} {'q(FDR)':>8s} {'median(거리차)':>14s}")
+    for t, q in zip(d_tests, d_qvals):
+        if t["res"] is None:
+            print(f"  {t['cond']:14s}  짝지어진 표본 부족(n={t['npair']}) — 검정 생략")
+            continue
+        sig = "*" if (q is not None and q < 0.05) else " "
+        direction = "원본에 더 가까움" if t["median_diff"] < 0 else ("원본에서 더 멂" if t["median_diff"] > 0 else "차이 없음")
+        print(f"  {t['cond']:14s} {t['res']['n']:4d} {t['res']['z']:+7.2f} {t['res']['p']:8.4f} {q:8.4f}{sig}  "
+              f"{t['median_diff']:+14.3f}  -> {t['cond']}가 {direction}")
+
+    print("\n" + "#" * 100)
+    print("  해석 주의")
+    print("  - 표 B는 결과를 본 뒤 정의한 사후적 구분 — 단독으로는 확증적 근거로 약함(탐색적 참고용)")
+    print("  - 표 C/D는 지표 정의 자체가 다른(변동성/복합거리) 새로운 분석 — 표 A와 나란히 놓고 같이 해석할 것")
+    print("  - 여러 분석 방식 중 유의한 것만 골라 보고하면 그 자체가 다중비교/체리피킹 문제가 되므로,")
+    print("    네 표를 전부 함께 제시하고 서로 다른 관점(근접성/일관성/질문구조/복합지표)이라는 점을 명시할 것")
+    print("#" * 100)
 
 
 def build_fewshot_text(dir_path, n=2, seed=42, classification=None):
@@ -784,6 +965,14 @@ def main():
     parser.add_argument("--refresh-format", action="store_true",
                          help="실행 없이 저장된 first_story/final_story 텍스트로 모든 레코드의 형식 지표를 강제로 다시 계산 "
                               "(대사 판별 정규식처럼 계산 로직 자체가 바뀌었을 때 사용. 필드 존재 여부와 무관하게 덮어씀)")
+    parser.add_argument("--extended-analysis", action="store_true",
+                         help="실행 없이 표 A~D(전체묶음FDR / 질문구조분리FDR / CV순열검정 / 결합z거리검정)를 "
+                              "한 번에 출력 (GPU 불필요)")
+    parser.add_argument("--primary-condition", action="append", default=[],
+                         help="--extended-analysis의 표B에서 confirmatory(주 질문) 취급할 조건. "
+                              "여러 번 줄 수 있음 (기본: few_shot_on 하나만)")
+    parser.add_argument("--cv-perm", type=int, default=5000, help="--extended-analysis 표C의 순열검정 반복 횟수")
+    parser.add_argument("--cv-seed", type=int, default=123, help="--extended-analysis 표C의 순열검정 시드")
     args = parser.parse_args()
 
     if len(args.extra_condition) != len(args.extra_fewshot_dir):
@@ -819,6 +1008,15 @@ def main():
     if args.paired_test:
         results = load_existing_results(args.output)
         print_paired_stats(results, args.corpus_dir, cv_threshold=args.cv_threshold, ref_condition=args.ref_condition)
+        return
+
+    if args.extended_analysis:
+        results = load_existing_results(args.output)
+        primary = tuple(args.primary_condition) if args.primary_condition else ("few_shot_on",)
+        print_extended_analysis(
+            results, args.corpus_dir, cv_threshold=args.cv_threshold, ref_condition=args.ref_condition,
+            primary_conditions=primary, cv_perm=args.cv_perm, cv_seed=args.cv_seed,
+        )
         return
 
     if args.compare_fewshot:
