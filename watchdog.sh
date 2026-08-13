@@ -11,7 +11,7 @@
 
 set -u
 LOG="run_watchdog_$(date +%s).log"
-CMD="python run_ab_test.py"
+CMD="python run_ab_test.py --extra-condition cat_의사소통 --extra-fewshot-dir data_sorted_cat_의사소통 --extra-condition cat_예술경험 --extra-fewshot-dir data_sorted_cat_예술경험"
 CHECK_INTERVAL=60   # 몇 초마다 로그를 확인할지
 
 echo "[watchdog] 시작. 로그 파일: $LOG"
