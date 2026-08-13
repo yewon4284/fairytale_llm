@@ -515,6 +515,7 @@ def build_fewshot_text(dir_path, n=2, seed=42, classification=None):
         if text.strip():
             candidates.append((d.get("title", ""), text))
 
+    pool_n = len(candidates)  # 샘플링 전 풀 크기 — 로그에 "몇 편 중 몇 편 뽑았는지" 정확히 남기기 위함
     if n is not None and n < len(candidates):
         rnd = _random.Random(seed)
         candidates = rnd.sample(candidates, n)
@@ -523,7 +524,7 @@ def build_fewshot_text(dir_path, n=2, seed=42, classification=None):
     for i, (title, text) in enumerate(candidates, 1):
         header = f"[참고 동화 {i}] {title}" if title else f"[참고 동화 {i}]"
         lines.append(f"{header}\n{text}")
-    return "\n\n".join(lines), len(candidates)
+    return "\n\n".join(lines), pool_n
 
 
 def load_corpus_stories(corpus_dir, classification=None, exclude_filenames=None):
@@ -657,14 +658,32 @@ def print_compare_to_corpus(results, corpus_dir, classification, exclude_dir):
     print("=" * 96)
 
 
-def print_compare_to_reference(results, few_shot_n):
+def print_compare_to_reference(results, few_shot_n, fewshot_dir="data_sorted"):
     """퓨샷으로 준 원본 참고 동화 자체의 형식 지표와, 생성 결과(on/off) 평균을 비교한다.
-    GPU/모델 로딩 없이 data_sorted만 읽어서 계산 (가벼움)."""
-    from src.data_loader import get_reference_stories
+    GPU/모델 로딩 없이 fewshot_dir만 읽어서 계산 (가벼움).
+    few_shot_on과 동일하게 classification 필터 없이(카테고리 골고루) 샘플링한다."""
+    from src.data_loader import story_to_text
+    import glob
 
-    refs = get_reference_stories(n=few_shot_n, classification="의사소통")
+    candidates = []
+    for fp in sorted(glob.glob(os.path.join(fewshot_dir, "*.json"))):
+        try:
+            with open(fp, "r", encoding="utf-8") as f:
+                d = json.load(f)
+        except Exception:
+            continue
+        text = story_to_text(d)
+        if text.strip():
+            candidates.append({"title": d.get("title", "제목 없음"), "text": text})
+
+    if candidates and few_shot_n is not None and few_shot_n < len(candidates):
+        import random as _random
+        refs = _random.Random(42).sample(candidates, few_shot_n)
+    else:
+        refs = candidates
+
     if not refs:
-        print("참고 동화를 불러오지 못했습니다 (data_sorted 확인 필요).")
+        print(f"참고 동화를 불러오지 못했습니다 ({fewshot_dir} 확인 필요).")
         return
 
     print("\n" + "=" * 90)
@@ -725,6 +744,8 @@ def main():
     parser.add_argument("--generator", default="1.5-8b", choices=["nano", "1.5-8b"])
     parser.add_argument("--no-safeguard", action="store_true")
     parser.add_argument("--few-shot-n", type=int, default=2)
+    parser.add_argument("--fewshot-dir", default="data_sorted",
+                         help="few_shot_on(기본 퓨샷) 조건의 소스 폴더 (기본 data_sorted, 카테고리 필터 없이 전체에서 샘플)")
     parser.add_argument("--summary", action="store_true", help="실행 없이 기존 결과만 집계")
     parser.add_argument("--compare-fewshot", action="store_true",
                          help="실행 없이 참고 동화 원본(2편)과 생성 결과 형식을 비교 (GPU 불필요)")
@@ -794,7 +815,7 @@ def main():
 
     if args.compare_fewshot:
         results = load_existing_results(args.output)
-        print_compare_to_reference(results, args.few_shot_n)
+        print_compare_to_reference(results, args.few_shot_n, fewshot_dir=args.fewshot_dir)
         return
 
     if args.compare_corpus:
@@ -822,7 +843,6 @@ def main():
     from src.generator import KANANA_NANO, KANANA_15_8B, FairyTaleGenerator
     from src.pipeline import FairyTalePipeline
     from src.evaluator import SolarEvaluator
-    from src.data_loader import get_reference_stories
 
     selected_model = KANANA_15_8B if args.generator == "1.5-8b" else KANANA_NANO
     logger.info(f"Generator 로딩: {selected_model}")
@@ -840,19 +860,13 @@ def main():
 
     evaluator = SolarEvaluator(api_key=api_key)
 
-    # 퓨샷 텍스트 준비 (data_sorted 1~20번 고정, seed=42로 n편 무작위 — README 기준과 동일)
-    refs = get_reference_stories(n=args.few_shot_n, classification="의사소통")
-    lines = []
-    for i, ref in enumerate(refs, 1):
-        title = ref.get("title", "")
-        text = ref.get("text", "").strip()
-        if text:
-            header = f"[참고 동화 {i}] {title}" if title else f"[참고 동화 {i}]"
-            lines.append(f"{header}\n{text}")
-    few_shot_text = "\n\n".join(lines)
-    logger.info(f"퓨샷 {len(refs)}편 로드 완료 ({len(few_shot_text)}자)")
+    # 퓨샷 텍스트 준비 — data_sorted(카테고리 4개씩 20편, 골고루) 전체에서 seed=42로 n편 무작위 샘플.
+    # (예전엔 get_reference_stories(classification="의사소통") 필터가 걸려있어서
+    #  실제로는 20편 중 의사소통 4편짜리 풀로만 좁혀져 뽑혔던 버그 — classification=None으로 수정)
+    few_shot_text, fewshot_pool_n = build_fewshot_text(args.fewshot_dir, n=args.few_shot_n, classification=None)
+    logger.info(f"퓨샷 {args.few_shot_n}편 로드 완료 ({args.fewshot_dir} 풀 {fewshot_pool_n}편 중 무작위 샘플, {len(few_shot_text)}자)")
     if not few_shot_text:
-        logger.warning("퓨샷 텍스트가 비어있습니다 — data_sorted 폴더를 확인하세요.")
+        logger.warning(f"퓨샷 텍스트가 비어있습니다 — {args.fewshot_dir} 폴더를 확인하세요.")
 
     pipelines = {
         "few_shot_on": FairyTalePipeline(generator, safeguard, evaluator, few_shot_text=few_shot_text),
