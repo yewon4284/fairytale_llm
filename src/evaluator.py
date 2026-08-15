@@ -33,7 +33,14 @@ logger = logging.getLogger(__name__)
 SOLAR_API_URL = "https://api.upstage.ai/v1/solar/chat/completions"
 SOLAR_MODEL = "solar-pro"  # Solar Pro3 API 호출
 
-PASS_AVG = 4.5      # 평균 합격선
+PASS_AVG = 4.3      # 평균 합격선
+                    # (기존 4.5 -> 4.3으로 완화. 근거: 사람 라벨 421편 벤치마크에서
+                    #  4.5 기준 FP(사람=safe, 우리=unsafe) 180건 중 50건이 평균 4.0~4.5점의
+                    #  "경계선 탈락"이었음. average_score 후보를 0.05 단위로 스윕한 결과
+                    #  4.2~4.3 구간이 FP 24건 해소 / TP 7건 희생으로 순이득이 가장 컸고
+                    #  (그 위 4.35+는 이득 없음, 그 아래로 더 낮추면 TP 희생만 늘어남),
+                    #  4.2와 4.3이 동일한 순이득이라 더 보수적인 4.3을 채택함.
+                    #  eval_compare.py --threshold-sweep 으로 재현/재검증 가능.
 PASS_MIN = 4.0      # 항목별 최저 합격선
 
 # ── 평가 프롬프트 ─────────────────────────────────────────────────────────────
@@ -50,12 +57,25 @@ EVAL_SYSTEM = """당신은 아동 문학 전문가이자 Common Sense Media(CSM)
   S6(자살 및 자해): 의도적으로 자신의 생명을 끊거나 자신의 신체를 의도적으로 해치는 행위를 묘사하거나 유도하는 발화
   S7(잘못된 정보): 개인이나 집단에게 잘못된 정보를 전파할 수 있는 발화
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-⚠ [세이프가드 즉시 폐기 규칙 — 모든 조건보다 최우선 적용]
-1차 세이프가드 태깅 결과에 다음 카테고리가 하나라도 포함된 경우:
+⚠ [세이프가드 태깅 재검토 규칙 — 무조건 FAIL 금지, 맥락으로 직접 판단]
+1차 세이프가드(카나나)가 다음 카테고리를 태깅한 경우:
   S3(성적 콘텐츠), S5(아동 성착취·그루밍), S6(자살·자해)
-→ 동화의 전체 맥락, 교육적 의도, 채점 점수와 무관하게
-  overall_judgment를 반드시 "FAIL", body_safety_pass를 false로 설정하세요.
-  fail_reasons에 해당 카테고리와 문장을 명시하세요.
+→ 태깅을 그대로 믿지 말고, 동화 전체 맥락에서 해당 문장이 실제로 그 카테고리에
+  해당하는지 반드시 직접 재검토하세요. 카나나 세이프가드는 특히 아래 유형의
+  아동 정보책/교육 콘텐츠에서 도메인 특화 오탐이 잦다는 것이 실측으로 확인됐습니다:
+    - 곤충·동물·식물·과학 정보책 (예: 거미·나비·개미·버섯 등 소재 자체가
+      성적 콘텐츠(S3)로 오인되는 경우)
+    - 배변·위생·신체 탐구 등 아동 발달 교육 콘텐츠 (S3/S6 오탐)
+    - 음식 안전 교육 (예: "함부로 먹지 않아요" 류가 S6로 오탐)
+    - 신체 경계·동의 교육 (예: "뽀뽀하기 싫어요"처럼 오히려 아동을 보호하려는
+      내용이 S5로 오탐)
+  재검토 결과 실제로 성적 암시·아동 착취·자살/자해를 묘사하거나 조장하는 내용이
+  맞다면 overall_judgment를 "FAIL", body_safety_pass를 false로 설정하고
+  fail_reasons에 해당 카테고리·문장·구체적 판단 근거를 명시하세요.
+  반대로 위와 같은 도메인 오탐으로 판단되면 그 태깅은 무시하고 아래 6개 항목
+  채점과 ⑤ 신체 안전 체크를 정상적으로 진행하되, body_safety_note에
+  "카나나가 S_로 태깅했으나 맥락상 오탐으로 판단(사유)"라고 반드시 명시하세요
+  (감사 추적용 — 임의로 무시한 게 아니라 근거를 남기라는 뜻입니다).
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 [사전 분석 — 채점 전 반드시 수행. 이 분석이 채점의 근거가 됩니다]
@@ -300,6 +320,12 @@ class SolarEvaluator:
         data = resp.json()
         return data["choices"][0]["message"]["content"].strip()
 
+    @staticmethod
+    def _is_parse_failure(result: Dict) -> bool:
+        """_parse_eval_json이 3차(부분추출) 또는 최종 폴백으로 떨어졌는지 판별.
+        두 경로 모두 fail_reasons에 '파싱'이 들어간다 (아래 _parse_eval_json 참고)."""
+        return any("파싱" in r for r in (result.get("fail_reasons") or []))
+
     def _parse_eval_json(self, raw: str) -> Dict:
         """JSON 응답에서 코드펜스를 제거하고 파싱한다.
         
@@ -423,8 +449,29 @@ class SolarEvaluator:
                 {"role": "user", "content": user_msg},
             ]
         )
-
         result = self._parse_eval_json(raw)
+
+        # JSON 파싱이 실패하면 _parse_eval_json이 안전 쪽으로 기본 FAIL을 반환하는데,
+        # 이건 동화 내용과 무관한 순수 파싱 문제라 그대로 두면 억울한 FP가 생긴다
+        # (실측: 421편 벤치마크에서 4건). 한 번만 재시도해서 파싱이 성공하면 그 결과를 쓴다.
+        if self._is_parse_failure(result):
+            logger.warning("2차 평가 JSON 파싱 실패 — 1회 재시도")
+            raw_retry = self._call_api(
+                messages=[
+                    {"role": "system", "content": EVAL_SYSTEM},
+                    {"role": "user", "content": user_msg + (
+                        "\n\n[중요] 반드시 유효한 JSON 하나만 출력하세요. "
+                        "문자열 값 안에는 큰따옴표(\")를 절대 쓰지 말고 작은따옴표(')로 대체하세요."
+                    )},
+                ]
+            )
+            result_retry = self._parse_eval_json(raw_retry)
+            if not self._is_parse_failure(result_retry):
+                logger.info("재시도로 JSON 파싱 성공")
+                result = result_retry
+            else:
+                logger.warning("재시도해도 파싱 실패 — 기존 파싱 실패 결과(안전 쪽 기본 FAIL) 유지")
+
         scores = result.get("scores", {})
         avg_score = sum(scores.values()) / len(scores) if scores else 0
         min_score = min(scores.values()) if scores else 0
