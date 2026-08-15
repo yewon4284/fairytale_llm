@@ -29,6 +29,9 @@ SETA(우리 파이프라인) vs 다른 가이드라인/세이프가드 모델들
     # 합격선(threshold) 후보별로 FP가 몇 건 줄고 TP가 몇 건 희생되는지 시뮬레이션
     python eval_compare.py --detail kanana_solar_eval.jsonl --threshold-sweep
 
+    # 합격선 선택이 테스트셋 과적합이 아닌지 k-fold 교차검증으로 확인 (논문 근거용)
+    python eval_compare.py --detail kanana_solar_eval.jsonl --threshold-cv
+
     # comparison의 human_eval과 detail의 ground_truth가 파일 단위로 일치하는지 확인
     python eval_compare.py --comparison "eval_comparison_final (1).xlsx" --detail kanana_solar_eval.jsonl --consistency
 
@@ -265,6 +268,95 @@ def print_breakdown(recs, pass_min=4.0):
 
 # ── 표 4: threshold 민감도 시뮬레이션 (detail jsonl 필요) ─────────────────────
 
+def _predict_at_threshold(r, avg_threshold, pass_min=4.0):
+    """레코드 하나를 특정 average_score 합격선으로 재판정.
+    decision_source=kanana_force(S3/S5/S6 강제규칙)인 것은 이 threshold와 무관하게 unsafe 유지
+    (실제 프로덕션에서는 이 규칙도 --detail 데이터 생성 당시와 다르게 완화됐을 수 있으나,
+    여기서는 average_score 합격선 자체의 효과만 분리해서 검증하기 위해 나머지 조건은 고정한다)."""
+    if r.get("decision_source") == "kanana_force":
+        return "unsafe"
+    avg = r.get("average_score") or 0
+    mn = r.get("min_score") or 0
+    return "safe" if (avg >= avg_threshold and mn >= pass_min) else "unsafe"
+
+
+def _accuracy_at_threshold(records, thr, pass_min=4.0):
+    if not records:
+        return float("nan")
+    correct = sum(1 for r in records if _predict_at_threshold(r, thr, pass_min) == r.get("ground_truth"))
+    return correct / len(records)
+
+
+def print_threshold_cv(recs, candidates=(4.5, 4.45, 4.4, 4.35, 4.3, 4.25, 4.2, 4.15, 4.1, 4.05, 4.0, 3.9, 3.8),
+                        k=5, seed=42, baseline_thr=4.5, pass_min=4.0):
+    """threshold를 이 데이터로 튜닝하면 '테스트셋에 과적합된 숫자'라는 방법론적 지적을 받을 수 있으므로,
+    k-fold 교차검증으로 (a) fold마다 뽑히는 최적 threshold가 안정적인지, (b) held-out(학습에 안 쓴)
+    데이터에서도 정확도 개선이 재현되는지 확인한다. 마지막에 전체 데이터에서 baseline_thr(기존값) vs
+    최빈 학습值(신규값) 예측을 McNemar exact로 paired 비교해 유의성도 같이 보고한다.
+    GPU/모델 로딩 불필요."""
+    import random as _random
+    import statistics as st
+    from collections import Counter
+
+    def best_threshold(records):
+        accs = [(thr, _accuracy_at_threshold(records, thr, pass_min)) for thr in candidates]
+        # 정확도 내림차순, 동률이면 더 보수적인(높은) threshold를 우선 채택
+        accs.sort(key=lambda x: (-x[1], -x[0]))
+        return accs[0]
+
+    n = len(recs)
+    ids = list(range(n))
+    _random.Random(seed).shuffle(ids)
+    folds = [ids[i::k] for i in range(k)]
+
+    print("\n" + "=" * 100)
+    print(f"  합격선(average_score) {k}-fold 교차검증 — '테스트셋에 tuning' 우려에 대한 근거 보강")
+    print(f"  후보: {list(candidates)}  (기존 기준: {baseline_thr})")
+    print("=" * 100)
+    print(f"  {'fold':>5s} {'n_test':>7s} {'학습된최적thr':>13s} {'held-out acc@학습thr':>20s} "
+          f"{'held-out acc@기존('+str(baseline_thr)+')':>24s}")
+
+    learned_thrs = []
+    accs_learned, accs_baseline = [], []
+    for i in range(k):
+        test_ids = set(folds[i])
+        train = [recs[j] for j in ids if j not in test_ids]
+        test = [recs[j] for j in ids if j in test_ids]
+        thr, _train_acc = best_threshold(train)
+        acc_learned = _accuracy_at_threshold(test, thr, pass_min)
+        acc_base = _accuracy_at_threshold(test, baseline_thr, pass_min)
+        learned_thrs.append(thr)
+        accs_learned.append(acc_learned)
+        accs_baseline.append(acc_base)
+        print(f"  {i+1:5d} {len(test):7d} {thr:13.2f} {acc_learned*100:19.1f}% {acc_base*100:23.1f}%")
+
+    thr_counter = Counter(learned_thrs)
+    modal_thr, modal_count = thr_counter.most_common(1)[0]
+    print(f"\n  fold별 학습된 threshold: {learned_thrs}")
+    print(f"  최빈값: {modal_thr} ({modal_count}/{k}개 fold에서 선택됨)"
+          f"{'  — 완전히 안정적' if modal_count == k else ''}")
+    print(f"  held-out 평균 정확도 — fold별 학습 threshold: {st.mean(accs_learned)*100:.1f}% "
+          f"(표준편차 {st.stdev(accs_learned)*100:.1f}%p)" if k > 1 else "")
+    print(f"  held-out 평균 정확도 — 고정 기존값({baseline_thr}):   {st.mean(accs_baseline)*100:.1f}% "
+          f"(표준편차 {st.stdev(accs_baseline)*100:.1f}%p)" if k > 1 else "")
+
+    # 전체 데이터에서 기존값 vs (fold 최빈) 신규값 paired McNemar
+    new_thr = modal_thr
+    correct_new = [_predict_at_threshold(r, new_thr, pass_min) == r.get("ground_truth") for r in recs]
+    correct_base = [_predict_at_threshold(r, baseline_thr, pass_min) == r.get("ground_truth") for r in recs]
+    b, c, p = mcnemar_exact(correct_new, correct_base)
+    sig = "*" if p < 0.05 else " "
+    acc_new_full = sum(correct_new) / n
+    acc_base_full = sum(correct_base) / n
+    print(f"\n  [전체 {n}건] 기존({baseline_thr}) 정확도 {acc_base_full*100:.1f}%  ->  신규({new_thr}) 정확도 {acc_new_full*100:.1f}%")
+    print(f"  McNemar exact: 신규만 맞음 {b}건 / 기존만 맞음 {c}건 / p={p:.4g}{sig}")
+    print("\n  해석: fold별 학습 threshold가 안정적이고(이상적으로는 표준편차 0 또는 후보 간격 이내),")
+    print("  held-out 정확도도 기존값보다 일관되게 높다면 '테스트셋 하나에만 과적합된 튜닝'이라는")
+    print("  우려에서는 어느 정도 벗어난 것. 다만 이 데이터셋 자체(421편) 밖의 완전히 새로운 샘플로")
+    print("  최종 검증하는 것이 이상적이라는 점은 논문에 한계로 명시할 것.")
+    print("=" * 100)
+
+
 def print_threshold_sweep(recs, thresholds=(4.5, 4.4, 4.3, 4.2, 4.1, 4.0), pass_min=4.0):
     """decision_source=solar 이면서 현재 predicted=unsafe인 것들(=avg 기준 미달로 떨어진 것들) 대상으로,
     average_score 합격선을 낮췄을 때 몇 건이 safe로 뒤집히는지, 그중 실제 safe(FP 해소, 좋음)와
@@ -344,12 +436,19 @@ def main():
     parser.add_argument("--mcnemar", action="store_true", help="our-col vs 나머지 모델 McNemar exact 검정")
     parser.add_argument("--breakdown", action="store_true", help="FP/FN 원인 분해 (--detail 필요)")
     parser.add_argument("--threshold-sweep", action="store_true", help="합격선 후보별 FP/TP 시뮬레이션 (--detail 필요)")
+    parser.add_argument("--threshold-cv", action="store_true",
+                         help="합격선을 k-fold 교차검증 (테스트셋에 tuning했다는 지적에 대한 근거, --detail 필요)")
+    parser.add_argument("--cv-folds", type=int, default=5, help="--threshold-cv의 fold 수")
+    parser.add_argument("--cv-seed", type=int, default=42, help="--threshold-cv의 fold 분할 시드")
+    parser.add_argument("--baseline-threshold", type=float, default=4.5, help="--threshold-cv에서 비교할 기존 합격선")
     parser.add_argument("--consistency", action="store_true", help="두 파일 간 라벨 일관성 체크 (둘 다 필요)")
     parser.add_argument("--all", action="store_true", help="가능한 표를 전부 출력")
     args = parser.parse_args()
 
-    if not any([args.summary, args.mcnemar, args.breakdown, args.threshold_sweep, args.consistency, args.all]):
-        print("표시할 표를 하나 이상 지정하세요 (--summary/--mcnemar/--breakdown/--threshold-sweep/--consistency/--all).")
+    if not any([args.summary, args.mcnemar, args.breakdown, args.threshold_sweep, args.threshold_cv,
+                args.consistency, args.all]):
+        print("표시할 표를 하나 이상 지정하세요 "
+              "(--summary/--mcnemar/--breakdown/--threshold-sweep/--threshold-cv/--consistency/--all).")
         sys.exit(1)
 
     comp_rows, comp_headers = (None, None)
@@ -383,6 +482,13 @@ def main():
             print("\n--threshold-sweep은 --detail 파일이 필요합니다.")
         else:
             print_threshold_sweep(detail_recs, thresholds=tuple(args.thresholds), pass_min=args.pass_min)
+
+    if args.threshold_cv or args.all:
+        if detail_recs is None:
+            print("\n--threshold-cv는 --detail 파일이 필요합니다.")
+        else:
+            print_threshold_cv(detail_recs, k=args.cv_folds, seed=args.cv_seed,
+                                baseline_thr=args.baseline_threshold, pass_min=args.pass_min)
 
     if args.consistency or args.all:
         if comp_rows is None or detail_recs is None:
