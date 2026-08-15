@@ -39,9 +39,16 @@ ALL_DATA_DIR = "all_data"      # 전체 441편
 FEWSHOT_DIR = "data_sorted"    # 퓨샷 고정 20편 (제외 대상)
 
 
-def get_test_filepaths():
-    """all_data 전체에서 data_sorted(퓨샷 20편)와 파일명이 겹치는 항목을 제외한 테스트셋 경로 목록."""
+def get_test_filepaths(include_fewshot=False):
+    """all_data 전체 경로 목록.
+    include_fewshot=False(기본)면 기존처럼 data_sorted(퓨샷 20편)와 파일명이 겹치는
+    항목을 제외해 421편만 반환 (퓨샷 실험과 섞이지 않게). include_fewshot=True면
+    제외 없이 441편 전부 반환 (퓨샷 실험을 더 이상 안 할 때 — 성능평가 벤치마크는
+    421편이 아니라 441편 전체를 쓰기로 함)."""
     all_paths = sorted(glob.glob(os.path.join(ALL_DATA_DIR, "*.json")))
+    if include_fewshot:
+        logger.info(f"all_data {len(all_paths)}편 전부를 테스트셋으로 사용 (퓨샷 20편 포함)")
+        return all_paths
     fewshot_names = {
         os.path.basename(p) for p in glob.glob(os.path.join(FEWSHOT_DIR, "*.json"))
     }
@@ -52,11 +59,11 @@ def get_test_filepaths():
     return test_paths
 
 
-def load_test_stories():
+def load_test_stories(include_fewshot=False):
     from src.data_loader import story_to_text  # JSON -> 본문 텍스트 변환
 
     stories = []
-    for p in get_test_filepaths():
+    for p in get_test_filepaths(include_fewshot=include_fewshot):
         try:
             with open(p, "r", encoding="utf-8") as f:
                 data = json.load(f)
@@ -93,6 +100,9 @@ def main():
     ap.add_argument("--output", default="eval_results.json")
     ap.add_argument("--limit", type=int, default=None, help="앞에서 N편만 테스트 (동작 확인용)")
     ap.add_argument("--no-safeguard", action="store_true", help="1차 세이프가드 생략 (Solar만)")
+    ap.add_argument("--include-fewshot", action="store_true",
+                     help="퓨샷 20편도 포함해 all_data 441편 전체를 테스트셋으로 사용 "
+                          "(기본은 421편 — 퓨샷 20편 제외)")
     args = ap.parse_args()
 
     api_key = os.getenv("UPSTAGE_API_KEY")
@@ -100,7 +110,7 @@ def main():
         logger.error("UPSTAGE_API_KEY 환경변수가 없습니다 (.env 확인).")
         sys.exit(1)
 
-    stories = load_test_stories()
+    stories = load_test_stories(include_fewshot=args.include_fewshot)
     if args.limit:
         stories = stories[: args.limit]
     logger.info(f"평가 대상 {len(stories)}편")
