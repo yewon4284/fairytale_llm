@@ -8,6 +8,10 @@ kanana-safeguard-8b QLoRA 파인튜닝 — S5(아동 성착취) 카테고리 강
 사용법:
   python finetune/train_s5.py
   python finetune/train_s5.py --dataset finetune/s5_dataset.json --output finetune/kanana-s5-adapter
+
+과적합 방지 하이퍼파라미터(epoch/lr/dropout/val_ratio/EarlyStopping)는 장서연님이 paper_jsy
+브랜치에서 동일 규모 데이터셋으로 실험 중 5 epoch/lr 2e-4에서 eval_loss가 거의 0으로 수렴하는
+과적합을 확인하고 수정한 값을 반영함 (2026-08-16).
 """
 
 import argparse
@@ -22,6 +26,7 @@ from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
     BitsAndBytesConfig,
+    EarlyStoppingCallback,
 )
 from trl import SFTTrainer, SFTConfig, DataCollatorForCompletionOnlyLM
 
@@ -50,7 +55,7 @@ def load_dataset(path: str, val_ratio: float = 0.1):
     )
 
 
-def build_model_and_tokenizer(base_model: str):
+def build_model_and_tokenizer(base_model: str, lora_r: int, lora_alpha: int, lora_dropout: float):
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_quant_type="nf4",
@@ -71,9 +76,9 @@ def build_model_and_tokenizer(base_model: str):
 
     lora_config = LoraConfig(
         task_type=TaskType.CAUSAL_LM,
-        r=16,
-        lora_alpha=32,
-        lora_dropout=0.05,
+        r=lora_r,
+        lora_alpha=lora_alpha,
+        lora_dropout=lora_dropout,
         # Gemma 계열 어텐션 레이어
         target_modules=["q_proj", "k_proj", "v_proj", "o_proj",
                         "gate_proj", "up_proj", "down_proj"],
@@ -91,7 +96,9 @@ def main(args):
     print(f"  train {len(train_ds)}개 / val {len(val_ds)}개")
 
     print(f"[2/3] 모델 로딩: {BASE_MODEL}")
-    model, tokenizer = build_model_and_tokenizer(BASE_MODEL)
+    model, tokenizer = build_model_and_tokenizer(
+        BASE_MODEL, args.lora_r, args.lora_alpha, args.lora_dropout
+    )
 
     # completion 부분만 loss 계산 (prompt 제외)
     collator = DataCollatorForCompletionOnlyLM(
@@ -106,14 +113,19 @@ def main(args):
         per_device_eval_batch_size=args.batch_size,
         gradient_accumulation_steps=4,
         gradient_checkpointing=True,
-        learning_rate=2e-4,
+        learning_rate=args.lr,
+        weight_decay=0.01,
         lr_scheduler_type="cosine",
         warmup_ratio=0.05,
         fp16=True,
         logging_steps=10,
         eval_strategy="epoch",
         save_strategy="epoch",
-        load_best_model_at_end=False,
+        # 과적합 직전(최저 eval_loss) 체크포인트를 최종 결과로 채택 + 조기 종료
+        load_best_model_at_end=True,
+        metric_for_best_model="eval_loss",
+        greater_is_better=False,
+        save_total_limit=3,
         report_to="none",
         optim="paged_adamw_8bit",
         max_seq_length=256,
@@ -128,6 +140,8 @@ def main(args):
         eval_dataset=val_ds,
         data_collator=collator,
         args=sft_config,
+        # eval_loss가 patience 이상 연속으로 개선 안 되면 조기 종료 (과적합 방지)
+        callbacks=[EarlyStoppingCallback(early_stopping_patience=2)],
     )
 
     trainer.train()
@@ -143,7 +157,15 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", default="finetune/s5_dataset.json")
     parser.add_argument("--output", default="finetune/kanana-s5-adapter")
-    parser.add_argument("--epochs", type=int, default=5)
+    parser.add_argument("--epochs", type=int, default=3,
+                         help="5 epoch에서 eval_loss가 거의 0으로 수렴(과적합)했던 것을 확인해 기본값을 낮춤")
     parser.add_argument("--batch_size", type=int, default=2)
-    parser.add_argument("--val_ratio", type=float, default=0.1)
+    parser.add_argument("--val_ratio", type=float, default=0.15,
+                         help="val 표본이 너무 작으면 과적합 감지가 부정확해서 기본값을 올림")
+    parser.add_argument("--lr", type=float, default=5e-5,
+                         help="기존 2e-4는 200여개 소규모 데이터셋+8B 모델엔 과적합을 유발할 만큼 공격적이었음")
+    parser.add_argument("--lora_r", type=int, default=16)
+    parser.add_argument("--lora_alpha", type=int, default=32)
+    parser.add_argument("--lora_dropout", type=float, default=0.1,
+                         help="기존 0.05보다 올려서 과적합 억제")
     main(parser.parse_args())

@@ -9,6 +9,11 @@ data/
 *.bin
 *.pt
 *.pth
+# 위 규칙이 학습된 LoRA 어댑터 가중치까지 걸러내서, kanana-s5-adapter의 실제 가중치가
+# 한 번도 커밋되지 못한 채 config/tokenizer 메타데이터만 올라가는 사고가 있었음(발견: 2026-08-16,
+# 새 pod에서 "S5 어댑터 가중치 없음" 경고로 확인). final_adapter 산출물만 예외로 허용.
+!finetune/**/final_adapter/adapter_model.safetensors
+!finetune/**/final_adapter/adapter_model.bin
 test_data/
 test_data/
 all_data/

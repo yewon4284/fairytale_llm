@@ -48,6 +48,15 @@ SAFEGUARD_PROMPT_TEMPLATE = (
     "<start_of_turn>user\n{text}<end_of_turn>\n<start_of_turn>model\n"
 )
 
+# 문맥 윈도우 분류용 헤더 (실험적 기능 — 문장 단독 분류 시 발생하는 도메인 오탐
+# 완화 목적. 아동 정보책/전래동화에서 "엉덩이/똥/방귀" 같은 표현이 앞뒤 문맥 없이
+# 그 문장만 보면 S3로 오인되는 사례가 실측으로 확인됨. 이 헤더로 모델에게 앞뒤
+# 문장은 참고용이고 [분류대상]만 분류하라고 명시적으로 지시한다.
+CONTEXT_PROMPT_HEADER = (
+    "다음은 동화의 연속된 문장들입니다. [분류대상]으로 표시된 문장 하나만 "
+    "SAFE 또는 UNSAFE-Sx로 분류하세요. 앞뒤 문장은 맥락 참고용이며 분류 대상이 아닙니다.\n\n"
+)
+
 
 class KananaSafeguard:
     """카나나 세이프가드 8B 래퍼 (S5 LoRA 어댑터 선택 지원)"""
@@ -85,14 +94,34 @@ class KananaSafeguard:
         self.model.eval()
         logger.info("Safeguard 모델 로딩 완료")
 
-    def classify_sentence(self, sentence: str) -> str:
+    @staticmethod
+    def _build_context_content(sentence: str, prev_context: str, next_context: str) -> str:
+        parts = [CONTEXT_PROMPT_HEADER]
+        if prev_context:
+            parts.append(f"[이전 문맥] {prev_context}\n")
+        parts.append(f"[분류대상] {sentence}\n")
+        if next_context:
+            parts.append(f"[다음 문맥] {next_context}\n")
+        return "".join(parts)
+
+    def classify_sentence(self, sentence: str, prev_context: str = "", next_context: str = "") -> str:
         """
         단일 문장을 분류한다.
+
+        prev_context/next_context를 주면(비어있지 않으면) 앞뒤 문맥을 포함한
+        프롬프트로 분류한다 — 문장을 단독으로 볼 때 발생하는 도메인 오탐(예: 전래동화
+        방귀 장면이 S3로 오인)을 완화하기 위한 실험적 기능. 베이스 모델이 이 학습 시
+        보지 못한 프롬프트 형식이라 효과는 실측 검증이 필요함 (test_safeguard_context.py 참고).
+
         Returns: '<SAFE>' 또는 '<UNSAFE-Sx>'
         """
         device = next(self.model.parameters()).device
+        if prev_context or next_context:
+            content = self._build_context_content(sentence, prev_context, next_context)
+        else:
+            content = sentence
         input_ids = self.tokenizer.apply_chat_template(
-            [{"role": "user", "content": sentence}],
+            [{"role": "user", "content": content}],
             tokenize=True, return_tensors="pt",
             add_generation_prompt=True,
         ).to(device)
@@ -112,9 +141,18 @@ class KananaSafeguard:
         result = self.tokenizer.decode(generated, skip_special_tokens=True).strip()
         return result
 
-    def evaluate_story(self, story: str) -> Tuple[List[str], List[Dict]]:
+    def evaluate_story(
+        self, story: str, use_context: bool = False, context_window: int = 1
+    ) -> Tuple[List[str], List[Dict]]:
         """
         동화 전체를 문장 단위로 평가한다.
+
+        Args:
+            use_context    : True면 각 문장을 분류할 때 앞뒤 context_window개 문장을
+                             맥락으로 같이 넣는다 (기본 False — 기존 동작과 동일,
+                             하위 호환 유지). 실험적 기능, test_safeguard_context.py로
+                             효과 검증 후 프로덕션 기본값 변경 여부 결정.
+            context_window : use_context=True일 때 앞/뒤로 포함할 문장 수.
 
         Returns:
             sentences      : 분리된 문장 리스트
@@ -125,10 +163,18 @@ class KananaSafeguard:
         sentences = [s.strip() for s in SENTENCE_SPLIT_RE.split(story) if s.strip()]
         flagged: List[Dict] = []
 
-        logger.info(f"1차 평가 시작 — 총 {len(sentences)}개 문장")
+        logger.info(
+            f"1차 평가 시작 — 총 {len(sentences)}개 문장"
+            + (f" (문맥 윈도우 {context_window} 사용)" if use_context else "")
+        )
 
         for idx, sent in enumerate(sentences):
-            result = self.classify_sentence(sent)
+            if use_context:
+                prev_ctx = " ".join(sentences[max(0, idx - context_window):idx])
+                next_ctx = " ".join(sentences[idx + 1:idx + 1 + context_window])
+                result = self.classify_sentence(sent, prev_ctx, next_ctx)
+            else:
+                result = self.classify_sentence(sent)
             logger.debug(f"  [{idx+1}] {result} | {sent[:40]}...")
 
             if result.startswith("<UNSAFE"):
