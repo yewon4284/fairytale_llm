@@ -103,6 +103,9 @@ def main():
     ap.add_argument("--include-fewshot", action="store_true",
                      help="퓨샷 20편도 포함해 all_data 441편 전체를 테스트셋으로 사용 "
                           "(기본은 421편 — 퓨샷 20편 제외)")
+    ap.add_argument("--adapter-path", default=None,
+                     help="S5_ADAPTER_PATH 대신 사용할 LoRA 어댑터 경로 (예: 재보정 어댑터를 "
+                          "프로덕션 기본값으로 바꾸기 전에 테스트할 때). 미지정 시 기존 기본 동작.")
     args = ap.parse_args()
 
     api_key = os.getenv("UPSTAGE_API_KEY")
@@ -122,8 +125,9 @@ def main():
         logger.info("세이프가드 생략 모드")
     else:
         from src.safeguard import KananaSafeguard
-        logger.info("Safeguard(kanana-safeguard-8b) 로딩...")
-        safeguard = KananaSafeguard()
+        logger.info("Safeguard(kanana-safeguard-8b) 로딩..."
+                     + (f" (어댑터 오버라이드: {args.adapter_path})" if args.adapter_path else ""))
+        safeguard = KananaSafeguard(adapter_path=args.adapter_path)
 
     from src.evaluator import SolarEvaluator
     evaluator = SolarEvaluator(api_key=api_key)
