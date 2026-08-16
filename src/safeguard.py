@@ -150,8 +150,18 @@ class KananaSafeguard:
         Args:
             use_context    : True면 각 문장을 분류할 때 앞뒤 context_window개 문장을
                              맥락으로 같이 넣는다 (기본 False — 기존 동작과 동일,
-                             하위 호환 유지). 실험적 기능, test_safeguard_context.py로
-                             효과 검증 후 프로덕션 기본값 변경 여부 결정.
+                             하위 호환 유지).
+
+                             ⚠ 실측 결과(2026-08-16, test_safeguard_context.py, kanana_solar_eval
+                             기준): 오탐(FP) 44건 중 82%가 해소됐지만, 정탐(TP, 진짜 위험한
+                             S3/S5/S6) 57건 중 63.2%(36건)를 놓치는 심각한 재현율 손실이 함께
+                             발생함 (특히 S3+S5 동시 태깅 사례에서 S3만 사라지는 패턴 다수 —
+                             문맥이 서사/픽션 프레이밍으로 작용해 모델이 관대해지는 것으로 추정,
+                             LLM에서 흔한 "이야기니까 괜찮다" 식 실패 패턴과 유사).
+                             결론: 아동 안전 도메인에서 이 트레이드오프는 용납 불가 —
+                             프로덕션 기본값을 True로 바꾸지 말 것. 오탐 완화는 evaluator.py의
+                             구조화된 재검토 규칙(Solar 2차 평가)에 맡기고, 이 옵션은 진단/실험
+                             용도로만 남겨둔다.
             context_window : use_context=True일 때 앞/뒤로 포함할 문장 수.
 
         Returns:
