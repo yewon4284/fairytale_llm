@@ -1,22 +1,36 @@
 """
 compare_calibrated_run.py
-eval_test_dataset.py로 새로 돌린 재보정 어댑터 결과(eval_results_calibrated.json, 441편)를
-기존 baseline(kanana_solar_eval.jsonl, 421편 — ground_truth + 재보정 전 predicted 포함)과
-비교한다.
 
-kanana_solar_eval.jsonl은 사람이 라벨링한 ground_truth를 담고 있는 유일한 파일이므로,
-"441편 중 몇 개가 SAFE/UNSAFE냐"만으로는 증명이 안 되고 반드시 이 파일과 join해서
-정답 대비 정확도를 봐야 함. 또한 predicted 필드가 재보정 전 시스템의 판정이므로
-같은 421편에 대해 before/after paired McNemar 검정이 가능함 (완전한 held-out은 아니지만
-현재 갖고 있는 것 중 가장 엄밀한 비교).
+두 가지 비교 모드를 지원한다.
 
-주의: eval_results_calibrated.json의 441편 중 20편은 퓨샷 세트라 kanana_solar_eval.jsonl에
-ground_truth가 없음 -> 자동으로 매칭 안 되는 건 스킵하고 몇 개 스킵됐는지 출력함.
+[모드 1: --baseline (jsonl) + --calibrated (json)] — 기존 방식
+    kanana_solar_eval.jsonl(팀 벤치마크, ground_truth 포함)의 predicted 필드를
+    BEFORE로, eval_test_dataset.py 결과를 AFTER로 비교.
+    ⚠ 주의: kanana_solar_eval.jsonl의 predicted는 decision_source=kanana_force인
+    101건에 대해 "구 하드포싱(S3/S5/S6 태깅 시 Solar 검토 없이 무조건 UNSAFE)"
+    파이프라인으로 만들어졌을 가능성이 높다(2026-08-16 실측: 이 모드로 비교하면
+    재현율이 91%대로 비정상적으로 높게 나오는데, 하드포싱은 재현율을 인위적으로
+    부풀리는 효과가 있음). 즉 이 모드는 "재보정 어댑터"뿐 아니라 "하드포싱 제거"
+    "Solar 프롬프트 개정"까지 여러 변화가 동시에 섞인 비교라 어댑터 단독 효과를
+    보여주지 못한다. 진짜 어댑터 효과를 보려면 모드 2를 쓸 것.
+
+[모드 2: --ground-truth (jsonl, 라벨만 사용) + --before (json) + --after (json)]
+    BEFORE/AFTER를 둘 다 "현재 evaluator.py + eval_test_dataset.py"로, 어댑터만
+    바꿔서 돌린 결과로 준다 (예: --before는 --adapter-path 없이, --after는
+    --adapter-path finetune/kanana-calibration-adapter/final_adapter로).
+    ground-truth 파일은 라벨(ground_truth)만 가져오고 그 predicted/flagged는
+    쓰지 않는다 — 파이프라인 로직은 두 실행 모두 동일하게 고정하고 어댑터
+    유무만 다르게 하는, 진짜 통제된 비교.
 
 사용법:
-    python compare_calibrated_run.py \
-        --baseline kanana_solar_eval.jsonl \
-        --calibrated eval_results_calibrated.json
+    # 모드 1 (구 방식, 참고용)
+    python compare_calibrated_run.py --baseline kanana_solar_eval.jsonl --calibrated eval_results_calibrated.json
+
+    # 모드 2 (권장) — 먼저 아래 두 실행을 현재 코드로 만들어야 함:
+    #   python eval_test_dataset.py --include-fewshot --output eval_results_base.json
+    #   python eval_test_dataset.py --include-fewshot --adapter-path finetune/kanana-calibration-adapter/final_adapter --output eval_results_calibrated.json
+    python compare_calibrated_run.py --ground-truth kanana_solar_eval.jsonl \
+        --before eval_results_base.json --after eval_results_calibrated.json
 """
 
 import argparse
@@ -26,7 +40,7 @@ import sys
 from eval_compare import confusion_metrics, mcnemar_exact, norm_label
 
 
-def load_baseline(path):
+def load_jsonl(path):
     rows = []
     with open(path, encoding="utf-8") as f:
         for line in f:
@@ -36,7 +50,7 @@ def load_baseline(path):
     return {r.get("file") or r.get("filename"): r for r in rows}
 
 
-def load_calibrated(path):
+def load_eval_json(path):
     with open(path, encoding="utf-8") as f:
         rows = json.load(f)
     return {r["filename"]: r for r in rows}
@@ -44,41 +58,102 @@ def load_calibrated(path):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--baseline", default="kanana_solar_eval.jsonl")
-    ap.add_argument("--calibrated", default="eval_results_calibrated.json")
+    ap.add_argument("--baseline", default=None,
+                     help="[모드 1] kanana_solar_eval.jsonl 등 predicted+ground_truth 포함 jsonl")
+    ap.add_argument("--calibrated", default=None,
+                     help="[모드 1] eval_test_dataset.py 결과 json (재보정 어댑터 적용)")
+    ap.add_argument("--ground-truth", default=None,
+                     help="[모드 2] ground_truth 라벨만 가져올 jsonl (predicted/flagged는 무시)")
+    ap.add_argument("--before", default=None, help="[모드 2] 어댑터 없이 현재 코드로 돌린 eval_test_dataset.py 결과 json")
+    ap.add_argument("--after", default=None, help="[모드 2] 재보정 어댑터로 현재 코드로 돌린 eval_test_dataset.py 결과 json")
     args = ap.parse_args()
 
-    baseline = load_baseline(args.baseline)
-    calibrated = load_calibrated(args.calibrated)
+    mode2 = args.ground_truth and args.before and args.after
+    mode1 = args.baseline and args.calibrated
+    if not (mode1 or mode2):
+        print("모드 1: --baseline + --calibrated 를 주거나\n모드 2: --ground-truth + --before + --after 를 주세요.")
+        sys.exit(1)
 
-    print(f"baseline(ground_truth 포함) {len(baseline)}편 / calibrated 실행 결과 {len(calibrated)}편")
-
-    matched = []
-    unmatched = []
-    for fname, base_rec in baseline.items():
-        cal_rec = calibrated.get(fname)
-        if cal_rec is None:
-            unmatched.append(fname)
-            continue
-        matched.append({
-            "filename": fname,
-            "title": base_rec.get("title", ""),
-            "ground_truth": base_rec.get("ground_truth"),
-            "before_predicted": base_rec.get("predicted"),
-            "after_predicted": cal_rec.get("verdict"),
-            "before_flagged_categories": base_rec.get("flagged_categories") or [],
-            "after_flagged_categories": cal_rec.get("flagged_categories") or [],
-        })
-
-    if unmatched:
-        print(f"  [경고] baseline에는 있지만 calibrated 결과에 없는 파일 {len(unmatched)}개 (건너뜀): "
-              f"{unmatched[:5]}{'...' if len(unmatched) > 5 else ''}")
+    if mode2:
+        print("[모드 2: 통제된 비교 — 어댑터만 다르고 파이프라인 코드는 동일]")
+        gt_source = load_jsonl(args.ground_truth)
+        before_source = load_eval_json(args.before)
+        after_source = load_eval_json(args.after)
+        matched = []
+        unmatched = []
+        for fname, gt_rec in gt_source.items():
+            b_rec = before_source.get(fname)
+            a_rec = after_source.get(fname)
+            if b_rec is None or a_rec is None:
+                unmatched.append(fname)
+                continue
+            matched.append({
+                "filename": fname,
+                "title": gt_rec.get("title", ""),
+                "ground_truth": gt_rec.get("ground_truth"),
+                "before_predicted": b_rec.get("verdict"),
+                "after_predicted": a_rec.get("verdict"),
+                "before_flagged_categories": b_rec.get("flagged_categories") or [],
+                "after_flagged_categories": a_rec.get("flagged_categories") or [],
+                "decision_source": gt_rec.get("decision_source"),
+            })
+        if unmatched:
+            print(f"  [경고] ground-truth에는 있지만 before/after 결과에 없는 파일 {len(unmatched)}개 (건너뜀): "
+                  f"{unmatched[:5]}{'...' if len(unmatched) > 5 else ''}")
+        print(f"ground_truth {len(gt_source)}편 / before {len(before_source)}편 / after {len(after_source)}편")
+    else:
+        print("[모드 1: 구 방식 — kanana_solar_eval.jsonl의 predicted를 BEFORE로 사용, 여러 변화 혼재 가능]")
+        baseline = load_jsonl(args.baseline)
+        calibrated = load_eval_json(args.calibrated)
+        print(f"baseline(ground_truth 포함) {len(baseline)}편 / calibrated 실행 결과 {len(calibrated)}편")
+        matched = []
+        unmatched = []
+        for fname, base_rec in baseline.items():
+            cal_rec = calibrated.get(fname)
+            if cal_rec is None:
+                unmatched.append(fname)
+                continue
+            matched.append({
+                "filename": fname,
+                "title": base_rec.get("title", ""),
+                "ground_truth": base_rec.get("ground_truth"),
+                "before_predicted": base_rec.get("predicted"),
+                "after_predicted": cal_rec.get("verdict"),
+                "before_flagged_categories": base_rec.get("flagged_categories") or [],
+                "after_flagged_categories": cal_rec.get("flagged_categories") or [],
+                "decision_source": base_rec.get("decision_source"),
+            })
+        if unmatched:
+            print(f"  [경고] baseline에는 있지만 calibrated 결과에 없는 파일 {len(unmatched)}개 (건너뜀): "
+                  f"{unmatched[:5]}{'...' if len(unmatched) > 5 else ''}")
 
     n = len(matched)
     print(f"\nground_truth와 매칭되어 실제 비교 가능한 편수: {n}\n")
     if n == 0:
         print("비교할 매칭 레코드가 없습니다. --baseline/--calibrated 파일명을 확인하세요.")
         sys.exit(1)
+
+    # ── 원래 문제였던 "오탐(FP) 44건"이 실제로 해소됐는지 직접 확인 ──────────────
+    # decision_source=='kanana_force' + ground_truth=='safe' 인 레코드가 바로
+    # 하드포싱 때문에 억지로 UNSAFE 처리됐던, 이 프로젝트가 애초에 고치려던 그 대상.
+    # 재현율 손실과는 완전히 별개 지표이므로 반드시 따로 확인해야 함.
+    fp_target = [r for r in matched
+                 if r.get("decision_source") == "kanana_force"
+                 and norm_label(r["ground_truth"]) == "SAFE"]
+    if fp_target:
+        print("=" * 70)
+        print(f"  원래 오탐(FP) 대상 {len(fp_target)}건 — 하드포싱으로 억지 UNSAFE 처리됐던 SAFE 동화들")
+        print("=" * 70)
+        fp_resolved_after = 0
+        for r in fp_target:
+            a = norm_label(r["after_predicted"])
+            ok = (a == "SAFE")
+            fp_resolved_after += ok
+            print(f"    {r['filename']} {r['title']}: AFTER={r['after_predicted']} "
+                  f"{'✅ 해소됨' if ok else '❌ 아직도 UNSAFE'}")
+        print(f"\n  FP 해소: {fp_resolved_after}/{len(fp_target)} "
+              f"({fp_resolved_after/len(fp_target)*100:.1f}%)")
+        print("  (이게 낮으면 재현율 트레이드와 별개로 원래 목표였던 오탐 문제 자체가 안 풀린 것)\n")
 
     print("=" * 70)
     print("  BEFORE(재보정 전 predicted) vs ground_truth")
