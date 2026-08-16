@@ -18,13 +18,22 @@
 set -e
 
 echo "================================================================"
-echo "  1/4. requirements.txt 설치"
+echo "  0/5. git 설정 (에디터 없어서 merge commit 막히는 문제 방지)"
+echo "================================================================"
+git config --global core.editor "true"
+git config --global pull.rebase false
+echo "  core.editor=true, pull.rebase=false 설정 완료 — 앞으로 git pull이 merge commit"
+echo "  메시지 편집기를 찾다가 멈추는 일 없음"
+
+echo ""
+echo "================================================================"
+echo "  1/5. requirements.txt 설치"
 echo "================================================================"
 pip install -r requirements.txt
 
 echo ""
 echo "================================================================"
-echo "  2/4. GPU 드라이버에 맞는 torch/torchvision으로 재설치"
+echo "  2/5. GPU 드라이버에 맞는 torch/torchvision으로 재설치"
 echo "================================================================"
 DRIVER_CUDA=$(nvidia-smi 2>/dev/null | grep -oP 'CUDA Version: \K[0-9]+\.[0-9]+' | head -1)
 if [ -z "$DRIVER_CUDA" ]; then
@@ -51,7 +60,7 @@ fi
 
 echo ""
 echo "================================================================"
-echo "  3/4. HuggingFace 캐시를 큰 볼륨(/workspace)으로 이동"
+echo "  3/5. HuggingFace 캐시를 큰 볼륨(/workspace)으로 이동"
 echo "================================================================"
 if [ -d "/workspace" ]; then
     rm -rf ~/.cache/huggingface
@@ -69,7 +78,7 @@ fi
 
 echo ""
 echo "================================================================"
-echo "  4/4. 남은 수동 작업 체크리스트"
+echo "  4/5. 남은 수동 작업 체크리스트"
 echo "================================================================"
 echo "  [ ] .env 파일에 UPSTAGE_API_KEY 입력됐는지 확인:"
 echo "        cat .env"
