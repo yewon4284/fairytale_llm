@@ -46,6 +46,14 @@ openai==2.33.0
 openpyxl>=3.1
 packaging==26.0
 peft==0.19.1
+
+# finetune/train_s5.py 전용 (안 쓰면 설치 불필요, GPU pod에서만)
+datasets>=2.19
+accelerate>=0.30
+bitsandbytes>=0.43
+# trl>=0.20부터 DataCollatorForCompletionOnlyLM이 제거되고
+# SFTConfig(completion_only_loss=True) 방식으로 API가 바뀜 (train_s5.py는 구버전 API 사용) — 고정 필요
+trl==0.19.1
 psutil==7.2.2
 pydantic==2.13.3
 pydantic_core==2.46.3
