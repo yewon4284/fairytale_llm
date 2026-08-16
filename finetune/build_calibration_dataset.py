@@ -96,6 +96,7 @@ def main():
     examples = []
 
     def process(records, relabel_safe):
+        skipped_soft = 0
         for r in records:
             fname = r.get("file") or r.get("filename")
             if not fname:
@@ -117,7 +118,19 @@ def main():
                       f"모델/어댑터 상태가 바뀌었을 수 있음). 건너뜀.")
                 continue
 
-            for fl in flagged:
+            # TP(relabel_safe=False)는 forced_categories(사람이 unsafe로 확인해준 카테고리)로만
+            # 제한한다. ground_truth=unsafe는 스토리 전체 수준 라벨이라, 같이 태깅된 S1/S2/S4/S7
+            # 같은 소프트 카테고리는 문장 단위로 검증된 적이 없다 — 세이프가드 자신의 판단을
+            # 그대로 재학습시키면 순환 신호(새 정보 없이 기존 오류까지 강화)가 될 위험이 있음.
+            # FP(relabel_safe=True)는 스토리 전체가 safe로 확인됐으므로 태깅된 모든 문장이
+            # 정의상 오탐이라 카테고리 제한 없이 전부 SAFE로 재라벨하는 게 맞다.
+            forced_cats = set(r.get("forced_categories") or [])
+            usable = flagged if relabel_safe else [
+                fl for fl in flagged if fl["category"] in forced_cats
+            ]
+            skipped_soft += len(flagged) - len(usable)
+
+            for fl in usable:
                 label = "SAFE" if relabel_safe else f"UNSAFE-{fl['category']}"
                 examples.append({
                     "text": fl["sentence"],
@@ -125,8 +138,11 @@ def main():
                     "source_file": fname,
                     "orig_category": fl["category"],
                 })
-            kind = "SAFE로 재라벨" if relabel_safe else "원 라벨 유지"
-            print(f"  {fname}: 태깅 문장 {len(flagged)}개 -> {kind}")
+            kind = "SAFE로 재라벨" if relabel_safe else "원 라벨 유지(확인된 카테고리만)"
+            print(f"  {fname}: 채택 {len(usable)}개 / 태깅 {len(flagged)}개 -> {kind}")
+
+        if not relabel_safe and skipped_soft:
+            print(f"  (검증 안 된 소프트 카테고리 태깅 {skipped_soft}건은 순환 신호 우려로 제외)")
 
     print("\n[1/2] FP 사례 처리 — 오탐 문장을 SAFE로 재라벨")
     process(fp_forced, relabel_safe=True)
