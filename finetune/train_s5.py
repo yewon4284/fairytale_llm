@@ -16,6 +16,7 @@ kanana-safeguard-8b QLoRA 파인튜닝 — S5(아동 성착취) 카테고리 강
 
 import argparse
 import json
+import math
 import random
 from pathlib import Path
 
@@ -34,6 +35,7 @@ from trl import SFTTrainer, SFTConfig, DataCollatorForCompletionOnlyLM
 BASE_MODEL = "kakaocorp/kanana-safeguard-8b"
 PROMPT_TEMPLATE = "<start_of_turn>user\n{text}<end_of_turn>\n<start_of_turn>model\n"
 RESPONSE_TEMPLATE = "<start_of_turn>model\n"  # completion 시작 구분자
+GRAD_ACCUM_STEPS = 4
 
 
 def load_dataset(path: str, val_ratio: float = 0.1):
@@ -106,17 +108,24 @@ def main(args):
         tokenizer=tokenizer,
     )
 
+    # trl 0.19.1의 SFTConfig는 warmup_ratio 필드가 없고 warmup_steps만 받음
+    # (설치된 버전에서 __dataclass_fields__로 실측 확인, 2026-08-16) — 직접 스텝 수로 환산.
+    steps_per_epoch = math.ceil(len(train_ds) / (args.batch_size * GRAD_ACCUM_STEPS))
+    total_steps = steps_per_epoch * args.epochs
+    warmup_steps = max(1, int(total_steps * args.warmup_ratio))
+    print(f"  스텝/epoch={steps_per_epoch}, 총 스텝={total_steps}, warmup_steps={warmup_steps}")
+
     sft_config = SFTConfig(
         output_dir=args.output,
         num_train_epochs=args.epochs,
         per_device_train_batch_size=args.batch_size,
         per_device_eval_batch_size=args.batch_size,
-        gradient_accumulation_steps=4,
+        gradient_accumulation_steps=GRAD_ACCUM_STEPS,
         gradient_checkpointing=True,
         learning_rate=args.lr,
         weight_decay=0.01,
         lr_scheduler_type="cosine",
-        warmup_ratio=0.05,
+        warmup_steps=warmup_steps,
         fp16=True,
         logging_steps=10,
         eval_strategy="epoch",
@@ -168,4 +177,7 @@ if __name__ == "__main__":
     parser.add_argument("--lora_alpha", type=int, default=32)
     parser.add_argument("--lora_dropout", type=float, default=0.1,
                          help="기존 0.05보다 올려서 과적합 억제")
+    parser.add_argument("--warmup_ratio", type=float, default=0.05,
+                         help="총 학습 스텝의 이 비율만큼 웜업. SFTConfig가 warmup_ratio를 직접 "
+                              "받지 않는 trl 버전이 있어 여기서 warmup_steps로 환산해 전달함")
     main(parser.parse_args())
