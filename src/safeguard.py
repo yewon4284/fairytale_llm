@@ -61,9 +61,12 @@ CONTEXT_PROMPT_HEADER = (
 class KananaSafeguard:
     """카나나 세이프가드 8B 래퍼 (S5 LoRA 어댑터 선택 지원)"""
 
-    def __init__(self, device: str = "cuda", use_s5_adapter: bool = True):
+    def __init__(self, device: str = "cuda", use_s5_adapter: bool = True, adapter_path: str = None):
         self.device = device
         self.use_s5_adapter = use_s5_adapter
+        # adapter_path를 주면 모듈 상수 S5_ADAPTER_PATH 대신 이 경로를 사용한다.
+        # 여러 어댑터(예: 기존 vs 재보정)를 스크립트 하나에서 순차적으로 비교할 때 유용.
+        self.adapter_path_override = adapter_path
         logger.info(f"Safeguard 디바이스: {self.device}")
         self._load_model()
 
@@ -76,7 +79,7 @@ class KananaSafeguard:
             device_map="auto",
         )
 
-        adapter_path = Path(S5_ADAPTER_PATH).resolve()
+        adapter_path = Path(self.adapter_path_override or S5_ADAPTER_PATH).resolve()
         has_weights = (
             (adapter_path / "adapter_model.safetensors").exists()
             or (adapter_path / "adapter_model.bin").exists()
