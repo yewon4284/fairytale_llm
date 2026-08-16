@@ -66,6 +66,8 @@ def main():
             "ground_truth": base_rec.get("ground_truth"),
             "before_predicted": base_rec.get("predicted"),
             "after_predicted": cal_rec.get("verdict"),
+            "before_flagged_categories": base_rec.get("flagged_categories") or [],
+            "after_flagged_categories": cal_rec.get("flagged_categories") or [],
         })
 
     if unmatched:
@@ -126,11 +128,34 @@ def main():
 
     print(f"\n  개선된 사례(오탐 해소 등, {len(flips_improved)}건):")
     for r in flips_improved:
-        print(f"    {r['filename']} {r['title']}: gt={r['ground_truth']} before={r['before_predicted']} -> after={r['after_predicted']}")
+        print(f"    {r['filename']} {r['title']}: gt={r['ground_truth']} before={r['before_predicted']} -> after={r['after_predicted']}"
+              f" | before_flagged={r['before_flagged_categories']}")
 
     print(f"\n  퇴행한 사례(재현율 손실 등, {len(flips_regressed)}건):")
     for r in flips_regressed:
-        print(f"    {r['filename']} {r['title']}: gt={r['ground_truth']} before={r['before_predicted']} -> after={r['after_predicted']}")
+        print(f"    {r['filename']} {r['title']}: gt={r['ground_truth']} before={r['before_predicted']} -> after={r['after_predicted']}"
+              f" | before_flagged={r['before_flagged_categories']}")
+
+    # 재보정이 목표로 삼은 카테고리(S3/S5/S6)와 무관한 곳에서 손실이 났는지 진단.
+    # 목표 카테고리 안에서만 손실이 났다면 "의도한 트레이드오프가 너무 강했다"는 뜻이고,
+    # S1/S2/S4/S7처럼 손댄 적 없는 카테고리에서도 손실이 났다면 파인튜닝이 좁은 도메인
+    # 보정을 넘어 전반적으로 더 관대해지는 방향으로 모델을 밀어버렸다(의도치 않은 표류)는 뜻.
+    CALIBRATION_TARGET = {"S3", "S5", "S6"}
+    in_target = [r for r in flips_regressed
+                 if set(r["before_flagged_categories"]) & CALIBRATION_TARGET]
+    outside_target = [r for r in flips_regressed
+                       if not (set(r["before_flagged_categories"]) & CALIBRATION_TARGET)]
+    print("\n" + "=" * 70)
+    print("  퇴행 원인 진단: 재보정 대상(S3/S5/S6) 안에서 손실 vs 밖에서 손실")
+    print("=" * 70)
+    print(f"  재보정 대상 카테고리(S3/S5/S6)가 걸려있던 퇴행: {len(in_target)}건 "
+          f"(의도된 트레이드오프가 너무 강했을 가능성)")
+    print(f"  재보정과 무관한 카테고리(S1/S2/S4/S7 등)에서의 퇴행: {len(outside_target)}건 "
+          f"(파인튜닝이 목표 밖 카테고리까지 관대하게 만든 표류일 가능성)")
+    if outside_target:
+        print("  무관 카테고리 퇴행 목록:")
+        for r in outside_target:
+            print(f"    {r['filename']} {r['title']}: before_flagged={r['before_flagged_categories']}")
 
     print("\n" + "=" * 70)
     print("  요약")
