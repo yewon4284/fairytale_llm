@@ -156,7 +156,9 @@ def main():
             taken += 1
         print(f"  {group}: 후보 {len(items)}건 중 {taken}건 채택")
 
-    if args.merge_with and os.path.exists(args.merge_with) and args.merge_with != args.output:
+    if args.merge_with and os.path.exists(args.merge_with):
+        # merge_with와 output이 같은 경로여도 된다 — 여기서 먼저 읽어서 메모리에 올려두고,
+        # 실제 쓰기는 이 아래에서 별도로 하기 때문에 self-merge(같은 파일에 이어붙이기)가 안전하게 동작함.
         with open(args.merge_with, encoding="utf-8") as f:
             existing = json.load(f)
         added = 0
