@@ -8,13 +8,14 @@ _call_api()만 CLOVA Studio API 호출 방식으로 오버라이드한다. 이�
 Solar Pro3 / Solar Pro4 / HCX-007을 같은 프롬프트·같은 합격기준으로 순수하게
 모델만 바꿔서 비교할 수 있다 (안 그러면 "무엇 때문에 차이가 났는지" 알 수 없음).
 
-⚠ 중요: CLOVA Studio API 정확한 요청/응답 스키마를 문서에서 100% 확인하지
-못했다 (2026-08-17 기준, 공식 문서가 로그인/JS 렌더링 뒤에 있어 자동 조회 실패).
-아래 구현은 알려진 v3 Chat Completions 형식을 최선으로 추정한 것이며,
-pod에서 실제 API 키로 첫 호출을 해보고 응답 형식이 다르면 _call_api()의
-파싱 부분을 바로잡아야 한다. 실행 전 반드시:
-    https://console.clovastudio.ncloud.com 에서 API 키 발급 후
-    curl로 한 번 직접 호출해서 응답 JSON 구조를 확인해볼 것을 권장.
+2026-08-18 실제 API 호출로 검증 완료 (pod에서 curl + python 양쪽 확인):
+  - 응답 스키마는 후보 1번 {"result": {"message": {"content": "..."}}} 이 맞음.
+  - HCX-007은 추론(inference) 모델이라 v3 Chat Completions의 일반 `maxTokens`
+    파라미터를 거부한다 ("Invalid parameter: maxTokens", maxTokens=50과 1024
+    둘 다 실패). 반드시 `maxCompletionTokens`를 대신 써야 함 — 공식 문서
+    (clovastudio-chatcompletionsv3-fc)에 "maxCompletionTokens: 추론 모델용,
+    maxTokens와 동시 사용 불가"로 명시돼있고, 실제로 maxCompletionTokens=1024로
+    호출하니 정상 응답(status 20000) 받음.
 
 사용법 (evaluator.py의 SolarEvaluator 대신):
     from src.evaluator_hcx import NaverHCXEvaluator
@@ -53,7 +54,9 @@ class NaverHCXEvaluator(SolarEvaluator):
             "messages": messages,
             "temperature": temperature,
             "topP": 0.8,
-            "maxTokens": max_tokens,
+            # HCX-007은 추론 모델이라 maxTokens가 아니라 maxCompletionTokens를 써야
+            # 함(2026-08-18 실제 호출로 확인 — maxTokens는 값에 상관없이 거부됨).
+            "maxCompletionTokens": max_tokens,
             # 구조화 출력(우리 프롬프트가 요구하는 JSON)과 thinking 모드는 동시 사용이
             # 안 된다고 확인됨(2026-08-17 조사) — 우리 프롬프트는 이미 자체적으로
             # 단계별 사전분석을 텍스트로 시키고 있어 모델 내장 thinking이 굳이
@@ -64,14 +67,14 @@ class NaverHCXEvaluator(SolarEvaluator):
         resp.raise_for_status()
         data = resp.json()
 
-        # 응답 스키마 불확실 — 알려진 두 가지 후보 형태를 순서대로 시도.
+        # 응답 스키마 검증 완료(2026-08-18): {"result": {"message": {"content": "..."}}} 가 맞음.
         try:
-            # 후보 1: CLOVA Studio 전통 형식 {"result": {"message": {"content": "..."}}}
             return data["result"]["message"]["content"].strip()
         except (KeyError, TypeError):
             pass
+        # 혹시 모를 OpenAI 호환 포맷 폴백 (v3 OpenAI-compatibility 엔드포인트를 쓰게
+        # 되는 경우를 대비한 안전장치, 평소엔 안 탐).
         try:
-            # 후보 2: OpenAI 호환 형식 {"choices": [{"message": {"content": "..."}}]}
             return data["choices"][0]["message"]["content"].strip()
         except (KeyError, IndexError, TypeError):
             pass
