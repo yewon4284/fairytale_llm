@@ -3,8 +3,14 @@
 # 자는 동안 무인으로 순차 실행:
 #   0) pod 셋업 스모크테스트 (GPU/데이터/API키 확인)
 #   1) Solar Pro3/Pro4/HCX-007 미니 스모크테스트 (본 실행 전에 API가 실제로 도는지 확인)
-#   2) held-out 분할 기준 재보정 어댑터 재학습 + held-out 20%로 검증
-#   3) Solar Pro3 / Solar Pro4 / HCX-007 3자 비교 (base 세이프가드 고정, 441편 전체)
+#   2) base(기존 어댑터) Solar Pro3 441편 -- held-out 비교의 "재보정 전" 기준선 겸
+#      3자 비교용 결과로 재사용 (2026-08-18: eval_results_base.json이 새 pod엔 아예
+#      없어서 예전 순서로는 held-out 비교가 매번 조용히 스킵되던 문제를 고침)
+#   3) held-out 분할 기준 재보정 어댑터 재학습 + held-out 20%로 검증
+#      (13단계는 --solar-model solar-pro3로 명시 고정 -- 2단계와 동일 모델임을
+#      보장해서 "어댑터 차이"만 순수하게 비교되게 함)
+#   4) Solar Pro4 / HCX-007 441편 (Pro3는 2단계에서 이미 실행함)
+#   5) 최종 3자 비교 리포트
 #
 # 설계 원칙:
 #   - set -e 안 씀. 한 단계가 실패해도 스크립트 전체가 죽지 않고 다음 단계로 넘어감
@@ -110,7 +116,20 @@ fi
 
 echo ""
 echo "================================================================"
-echo "  2/4. held-out 분할 기준 재보정 어댑터 재학습 + 검증"
+echo "  2/4. base(기존 어댑터) Solar Pro3 441편 실행"
+echo "  -- held-out 비교의 '재보정 전' 기준선으로도 재사용하고, 3자 비교에도"
+echo "     그대로 쓴다(eval_results_base.json을 새 pod마다 따로 준비할 필요가"
+echo "     없어짐 -- 2026-08-18에 새 pod엔 그 파일이 아예 없다는 걸 발견해서 순서를"
+echo "     이렇게 재배치함, 원래는 held-out 비교(옛 14단계)가 뒤에 있어서 매번"
+echo "     조용히 건너뛰기만 하고 있었음)."
+echo "================================================================"
+
+run_step "20_eval_solar_pro3" python eval_test_dataset.py --include-fewshot \
+    --evaluator solar --solar-model solar-pro3 --output eval_results_solar_pro3.json
+
+echo ""
+echo "================================================================"
+echo "  3/4. held-out 분할 기준 재보정 어댑터 재학습 + 검증"
 echo "================================================================"
 
 run_step "10_build_calib_dataset" python finetune/build_calibration_dataset.py \
@@ -129,26 +148,25 @@ run_step "12_train_adapter" python finetune/train_s5.py \
     --dataset finetune/calibration_dataset_clean.json \
     --output finetune/kanana-calibration-adapter-clean
 
+# --solar-model을 명시적으로 solar-pro3로 고정 -- 안 고정하면 evaluator.py 기본값
+# (모듈 상수 SOLAR_MODEL="solar-pro")을 쓰게 되는데, 이게 20단계의 "solar-pro3"와
+# 실제로 동일 모델인지 100% 확인된 바가 없음. 같은 문자열을 강제해서 재보정 전/후
+# 비교가 "어댑터 차이"만 순수하게 반영하도록 함 (안 그러면 모델 문자열 차이까지
+# 섞여서 뭐 때문에 달라졌는지 알 수 없게 됨 -- 예전 퓨샷 고정 실수와 같은 종류의 함정).
 run_step "13_eval_calibrated_clean" python eval_test_dataset.py --include-fewshot \
     --adapter-path finetune/kanana-calibration-adapter-clean/final_adapter \
+    --evaluator solar --solar-model solar-pro3 \
     --output eval_results_calibrated_clean.json
 
-if [ -f "eval_results_base.json" ]; then
-    run_step "14_compare_holdout" python compare_calibrated_run.py \
-        --ground-truth kanana_solar_eval_441.jsonl \
-        --before eval_results_base.json --after eval_results_calibrated_clean.json \
-        --restrict-files finetune/holdout_files.json
-else
-    log_status "⚠ eval_results_base.json 없어서 held-out 비교(14단계) 건너뜀 — base 어댑터 없이 먼저 돌려야 함"
-fi
+run_step "14_compare_holdout" python compare_calibrated_run.py \
+    --ground-truth kanana_solar_eval_441.jsonl \
+    --before eval_results_solar_pro3.json --after eval_results_calibrated_clean.json \
+    --restrict-files finetune/holdout_files.json
 
 echo ""
 echo "================================================================"
-echo "  3/4. Solar Pro3 / Pro4 / HCX-007 3자 비교 (base 세이프가드, 441편)"
+echo "  4/5. Solar Pro4 / HCX-007 (20단계 solar-pro3는 위에서 이미 실행함)"
 echo "================================================================"
-
-run_step "20_eval_solar_pro3" python eval_test_dataset.py --include-fewshot \
-    --evaluator solar --solar-model solar-pro3 --output eval_results_solar_pro3.json
 
 run_step "21_eval_solar_pro4" python eval_test_dataset.py --include-fewshot \
     --evaluator solar --solar-model solar-pro4 --output eval_results_solar_pro4.json
@@ -160,7 +178,7 @@ fi
 
 echo ""
 echo "================================================================"
-echo "  4/4. 최종 비교 리포트"
+echo "  5/5. 최종 비교 리포트"
 echo "================================================================"
 
 COMPARE_ARGS="--ground-truth kanana_solar_eval_441.jsonl --result solar_pro3=eval_results_solar_pro3.json --result solar_pro4=eval_results_solar_pro4.json"
