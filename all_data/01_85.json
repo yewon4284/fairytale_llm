@@ -1,0 +1,138 @@
+{
+  "title": "글자가 사라졌어요",
+  "author": "이지아",
+  "illustrator": "레나",
+  "isbn": "9791198465320",
+  "readAge": "유아",
+  "publishedYear": 2023,
+  "publisher": "아람북스",
+  "classification": "의사소통",
+  "paragraphInfoCount": 18,
+  "paragraphInfo": [
+    {
+      "srcTextID": "141884",
+      "srcText": "여기는 웃음 대장 다다의 집이야. 다다는 깔끔 대장 엄마랑 이야기 대장 아빠랑 함께 살고 있지. 오늘도 기분이 좋은 다다는 싱글벙글.",
+      "srcPage": 1,
+      "srcSentenceEA": 3,
+      "srcWordEA": 22
+    },
+    {
+      "srcTextID": "141883",
+      "srcText": "\"시원한 주스를 마시러 출발!\" 웃음 대장 다다가 와다닥 냉장고로 달려갔어. 갑자기 주스가 마시고 싶네!",
+      "srcPage": 2,
+      "srcSentenceEA": 3,
+      "srcWordEA": 15
+    },
+    {
+      "srcTextID": "141885",
+      "srcText": "그런데 다다가 고개를 갸우뚱! \"어? '냉장고' 글자가 사라졌네.\" '냉장고' 글자가 어디로 사라졌지?",
+      "srcPage": 3,
+      "srcSentenceEA": 4,
+      "srcWordEA": 15
+    },
+    {
+      "srcTextID": "141886",
+      "srcText": "다다는 사라진 글자를 찾으러 여기저기 두리번두리번. 그러다 마이크를 발견했어! \"히히, 그냥 노래 부르면서 놀아야겠다!\" 우선, 마이크로 노래 부르고 놀아야지.",
+      "srcPage": 4,
+      "srcSentenceEA": 4,
+      "srcWordEA": 21
+    },
+    {
+      "srcTextID": "141888",
+      "srcText": "다다가 또 한 번 고개를 갸우뚱! \"어? '마이크 ' 글자도 사라졌잖아?\" 글자가 또 사라졌어! 다다는 구석구석 두리번거리며 사라진 글자를 찾아다녔어.",
+      "srcPage": 5,
+      "srcSentenceEA": 5,
+      "srcWordEA": 23
+    },
+    {
+      "srcTextID": "141887",
+      "srcText": "그러다 하얀 요리사 모자와 양 인형을 발견했지. \"헤헤, 양에게 맛있는 요리부터 해 줘야지!\" 모르겠다. 양이랑 요리놀이할래.",
+      "srcPage": 6,
+      "srcSentenceEA": 4,
+      "srcWordEA": 18
+    },
+    {
+      "srcTextID": "141889",
+      "srcText": "\"오늘은 내가 샌드위치 요리사!\" 다다는 아삭아삭 무로 맛있는 샌드위치를 뚝딱 만들었어. \" 양아, 무 샌드위치 같이 먹자.\"",
+      "srcPage": 7,
+      "srcSentenceEA": 3,
+      "srcWordEA": 18
+    },
+    {
+      "srcTextID": "141890",
+      "srcText": "갑자기 다다의 배에서 꼬르륵! \"우유와 아이스크림 진짜로 먹고 싶다!\" 무 샌드위치 완성! 양아, 우리 같이 먹자!",
+      "srcPage": 8,
+      "srcSentenceEA": 4,
+      "srcWordEA": 18
+    },
+    {
+      "srcTextID": "141892",
+      "srcText": "다다는 방실방실 웃으며 냉장고로 달려갔어. 그러고는 우유와 아이스크림을 꺼냈지. 배고파. 우유랑 아이스크림 먹어야지!",
+      "srcPage": 9,
+      "srcSentenceEA": 4,
+      "srcWordEA": 16
+    },
+    {
+      "srcTextID": "141891",
+      "srcText": "다다가 고개를 갸웃갸웃. \"어? '우유' 글자도 사라졌네!\" 다다는 곰곰이 생각에 잠겼어. 무슨 생각을 하는 걸까? 누가 글자를 자꾸 사라지게 할까?",
+      "srcPage": 10,
+      "srcSentenceEA": 6,
+      "srcWordEA": 25
+    },
+    {
+      "srcTextID": "141893",
+      "srcText": "\"그래, 결심했어!\" 다다는 누가 글자를 사라지게 하는지 찾아 보기로 했어. 방에 가서 이리저리 두리번두리번.",
+      "srcPage": 11,
+      "srcSentenceEA": 3,
+      "srcWordEA": 16
+    },
+    {
+      "srcTextID": "141894",
+      "srcText": "욕실에서도 요리조리 두리번두리번. 거실에서도 이쪽저쪽 두리번두리번. 누군지 찾아 봐야겠어.",
+      "srcPage": 12,
+      "srcSentenceEA": 3,
+      "srcWordEA": 11
+    },
+    {
+      "srcTextID": "141896",
+      "srcText": "다다는 한참 동안 돌아다녔어. 그래도 웃음 대장 다다는 빙그레 벙그레. \"얍! 조금만 더 찾아 보자!\" 힘내서 더 찾아 보자. 얍!",
+      "srcPage": 13,
+      "srcSentenceEA": 5,
+      "srcWordEA": 24
+    },
+    {
+      "srcTextID": "141895",
+      "srcText": "다다가 주방을 다시 찾아 보려 하는데, 어디선가 쩝쩝 소리가 들렸어. 다다는 소리를 찾아 살금살금 다가갔지. 소리가 나는 곳은 바로 냉동실이었어! 쉿! 무슨 소리지?",
+      "srcPage": 14,
+      "srcSentenceEA": 5,
+      "srcWordEA": 27
+    },
+    {
+      "srcTextID": "141897",
+      "srcText": "냉동실 문을 활짝 열어 보니, 젤리 지렁이가 '아이스크림' 글자를 냠냠 오물오물 꿀꺽! \"찾았다. 바로 너였구나!\" 웃음 대장 다다는 신이 나서 발을 콩콩 굴렀어. 야호! 찾았다, 찾았어!",
+      "srcPage": 15,
+      "srcSentenceEA": 6,
+      "srcWordEA": 31
+    },
+    {
+      "srcTextID": "141898",
+      "srcText": "다다는 갑자기 고민에 빠졌어. '엄마랑 아빠가 글자 먹는 젤리 지렁이를 보고 놀라면 어쩌지?' \"아하! 좋은 생각이 났어.\" 나를 보고 화를 내면 어쩌지? 걱정 마. 내가 안전하게 지켜 줄게.",
+      "srcPage": 16,
+      "srcSentenceEA": 6,
+      "srcWordEA": 33
+    },
+    {
+      "srcTextID": "141899",
+      "srcText": "\"젤리 지렁이야, 내가 매일 한글 요리를 만들어 줄게!\" 다다가 색연필로 또박또박, 사인펜으로 술술. 젤리 지렁이는 다다가 쓴 글자를 맛있게 먹었지. 친구야, 너도 같이 써 볼래?",
+      "srcPage": 17,
+      "srcSentenceEA": 4,
+      "srcWordEA": 28
+    },
+    {
+      "srcTextID": "141900",
+      "srcText": "나는 한글 요리사! 젤리 지렁이야, 맛이 어때? 정말 맛있어! 내 친구 다다야, 고마워!",
+      "srcPage": 18,
+      "srcSentenceEA": 4,
+      "srcWordEA": 16
+    }
+  ]}

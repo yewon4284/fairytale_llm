@@ -1,0 +1,139 @@
+{
+  "title": "\t내 친구는 어디 있을까?",
+  "author": "나지원",
+  "illustrator": "이명애",
+  "isbn": "9788929110581\t",
+  "readAge": "유아",
+  "publishedYear": 2015,
+  "publisher": "글뿌리",
+  "classification": "자연탐구",
+  "paragraphInfoCount": 18,
+  "paragraphInfo": [
+    {
+      "srcTextID": "149714",
+      "srcText": "예인이가 연못가에 놀러 왔어요. 풀잎을 똑똑 따고, 물수제비를 퐁퐁 떴어요. 그래도 너무 심심했지요. \"아이, 재미있는 일 없을까?\"",
+      "srcPage": 1,
+      "srcSentenceEA": 4,
+      "srcWordEA": 19
+    },
+    {
+      "srcTextID": "150097",
+      "srcText": "그때 개구리가 연잎 위로 폴짝 올라왔어요. 예인이는 개구리에게 물었어요. \"개구리야, 나랑 놀래?\"",
+      "srcPage": 2,
+      "srcSentenceEA": 3,
+      "srcWordEA": 13
+    },
+    {
+      "srcTextID": "150096",
+      "srcText": "\"싫어. 난 개구리 친구들이랑 놀 거야!\" 개굴개굴 폴짝, 개굴개굴 폴짝. 개구리들은 신나게 뛰어놀았어요.",
+      "srcPage": 3,
+      "srcSentenceEA": 3,
+      "srcWordEA": 16
+    },
+    {
+      "srcTextID": "150099",
+      "srcText": "공작이 사뿐사뿐 연못가를 지나갔어요. 긴 꼬리를 번쩍 들자, 알록달록 꽁지깃이 무지개처럼 펼쳐졌어요. \"공작아, 나랑 놀래?\"",
+      "srcPage": 4,
+      "srcSentenceEA": 3,
+      "srcWordEA": 16
+    },
+    {
+      "srcTextID": "150098",
+      "srcText": "\"싫어. 나는 공작 친구들이랑 놀 거야!\" 살랑살랑 차르르, 살랑살랑 차르르. 공작들은 함께 사이좋게 산책했어요.",
+      "srcPage": 5,
+      "srcSentenceEA": 3,
+      "srcWordEA": 17
+    },
+    {
+      "srcTextID": "150101",
+      "srcText": "두루미가 날아와 너울너울 춤을 추었어요. 예인이는 쪼르르 달려가 물었어요. \"두루미야, 나랑 춤출래?\"",
+      "srcPage": 6,
+      "srcSentenceEA": 3,
+      "srcWordEA": 13
+    },
+    {
+      "srcTextID": "150100",
+      "srcText": "\"싫어! 나는 두루미 친구들이랑 춤출 거야!\" 훨훨 사뿐사뿐, 훨훨 사뿐사뿐. 두루미들이 즐겁게 춤을 추었어요.",
+      "srcPage": 7,
+      "srcSentenceEA": 3,
+      "srcWordEA": 17
+    },
+    {
+      "srcTextID": "150102",
+      "srcText": "\"여기에는 내 친구가 없나 봐!\" 예인이는 터덜터덜 연못가를 떠났어요. \"어디를 가야 친구를 만날까?\"",
+      "srcPage": 8,
+      "srcSentenceEA": 3,
+      "srcWordEA": 14
+    },
+    {
+      "srcTextID": "150103",
+      "srcText": "고릴라들이 옹기종기 풀밭에 모여 있었어요. \"고릴라야, 나랑 놀래?\" 하지만 고릴라들은 들은 척도 하지 않았어요. 뒤적뒤적, 만지작만지작. 서로 털을 골라 주느라 정신이 없었어요.",
+      "srcPage": 9,
+      "srcSentenceEA": 5,
+      "srcWordEA": 25
+    },
+    {
+      "srcTextID": "150104",
+      "srcText": "조금 더 가다 보니, 토끼들이 오물오물 풀을 뜯고 있었어요. \"아이, 귀여워!\" 예인이는 살금살금 다가갔어요. 토끼는 귀를 쫑긋, 뒷발을 쿵쿵. 후다닥 깡충깡충 뛰어가 버렸어요.",
+      "srcPage": 10,
+      "srcSentenceEA": 5,
+      "srcWordEA": 26
+    },
+    {
+      "srcTextID": "150106",
+      "srcText": "\"아무도 나랑 놀지 않아!\" 예인이는 입을 비죽대며 동굴 안으로 들어갔어요. 캄캄한 동굴 안에 아기 박쥐들이 매달려 있었어요.",
+      "srcPage": 11,
+      "srcSentenceEA": 3,
+      "srcWordEA": 19
+    },
+    {
+      "srcTextID": "150105",
+      "srcText": "\"아기 박쥐들아, 나랑 놀자!\" 그때 엄마 박쥐들이 돌아왔어요. 파드닥파드닥. 예인이는 무서워서 얼른 도망쳤어요.\n\n",
+      "srcPage": 12,
+      "srcSentenceEA": 4,
+      "srcWordEA": 16
+    },
+    {
+      "srcTextID": "150107",
+      "srcText": "예인이는 훌쩍훌쩍 울었어요. 그때 개미 한 마리가 과자 위로 쪼르르. 개미 친구들이 졸졸 따라왔어요. 모두 과자 부스러기를 하나씩 물고 줄지어 집으로 돌아갔어요.",
+      "srcPage": 13,
+      "srcSentenceEA": 4,
+      "srcWordEA": 25
+    },
+    {
+      "srcTextID": "150108",
+      "srcText": "예인이는 꽃밭에서 붕붕 꿀벌을 보았어요. \"꿀벌아, 나랑 놀자.\" 하지만 꿀벌은 예인이를 바라보지도 않고 벌집으로 붕 날아가 버렸지요.",
+      "srcPage": 14,
+      "srcSentenceEA": 3,
+      "srcWordEA": 18
+    },
+    {
+      "srcTextID": "150109",
+      "srcText": "꿀벌은 벌집 앞에서 엉덩이를 실룩실룩. 예인이는 고개를 갸우뚱갸우뚱. 꿀벌 친구들은 알았다고 끄덕끄덕.",
+      "srcPage": 15,
+      "srcSentenceEA": 3,
+      "srcWordEA": 14
+    },
+    {
+      "srcTextID": "150110",
+      "srcText": "\"바다에는 내 친구가 있을지도 몰라.\" 예인이는 바닷가로 갔어요. 돌고래가 혼자 노래를 부르고 있었지요. \"돌고래야, 너도 심심하지? 나랑 놀래?\" 그때 어디선가 돌고래 친구가 첨벙첨벙. 돌고래들은 함께 멀리멀리 사라졌어요.",
+      "srcPage": 16,
+      "srcSentenceEA": 7,
+      "srcWordEA": 32
+    },
+    {
+      "srcTextID": "150111",
+      "srcText": "\"모두 내가 싫은가 봐.\" 예인이는 연못가로 타박타박 돌아왔어요. 누가 예인이의 친구가 되어 줄까요?",
+      "srcPage": 17,
+      "srcSentenceEA": 3,
+      "srcWordEA": 15
+    },
+    {
+      "srcTextID": "150112",
+      "srcText": "\"안녕? 나랑 놀래?\" 남자아이가 예인이에게 반갑게 인사했어요. 예인이는 기뻐서 방긋 웃었어요. 드디어 예인이에게도 친구가 생겼어요!",
+      "srcPage": 18,
+      "srcSentenceEA": 4,
+      "srcWordEA": 19
+    }
+  ]
+}

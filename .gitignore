@@ -16,7 +16,9 @@ data/
 !finetune/**/final_adapter/adapter_model.bin
 test_data/
 test_data/
-all_data/
+# all_data/ — 5MB밖에 안 돼서(441개 파일, 평균 9.7KB) git에 못 올릴 이유가 없었음.
+# 용량 걱정으로 gitignore 해뒀던 건데 매 pod마다 수동 scp해야 하는 큰 불편만 만들었어서
+# 2026-08-17에 제외 규칙 자체를 없앰 — 이제 git pull로 자동으로 따라옴.
 ab_results.json
 ab_test.log
 manual_batch2.json

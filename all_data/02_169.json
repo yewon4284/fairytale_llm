@@ -1,0 +1,125 @@
+{
+  "title": "버스를 타는 고양이, 맥",
+  "author": "민정원",
+  "illustrator": "김영곤",
+  "isbn": "9791186298084",
+  "readAge": "유아",
+  "publishedYear": 2015,
+  "publisher": "꼬마대통령",
+  "classification": "자연탐구",
+  "paragraphInfoCount": 16,
+  "paragraphInfo": [
+    {
+      "srcTextID": "97278",
+      "srcText": "버스의 나라 영국. 영국에서는 고양이도 버스를 탄다? 영국 런던에서는 버스를 타는 고양이 '맥'이 최고의 인기를 누리고 있다.",
+      "srcPage": 1,
+      "srcSentenceEA": 4,
+      "srcWordEA": 20
+    },
+    {
+      "srcTextID": "97277",
+      "srcText": "'맥'이라는 이름은 자주 타는 버스 331번 운전기사가 지어 준 것이다. '맥'은 지난 3개월 동안 일주일에 서너 번씩 331번 버스를 타고 피시 앤 칩스 가게 앞에서 내렸다고 한다. 그러는 동안 '맥'덕분에 331번 버스에도, 피시 앤 칩스 가게에도 손님이 많아졌다.",
+      "srcPage": 2,
+      "srcSentenceEA": 4,
+      "srcWordEA": 42
+    },
+    {
+      "srcTextID": "97279",
+      "srcText": "안녕, 나는 맥이야. 버스를 타고 여행 다니는 것을 좋아해. 이층 버스, 굴절 버스, 고속버스. 음, 오늘은 어떤 버스를 타 볼까?",
+      "srcPage": 3,
+      "srcSentenceEA": 4,
+      "srcWordEA": 23
+    },
+    {
+      "srcTextID": "97280",
+      "srcText": "런던에서는 빨간색 이층 버스가 유명해. 나는 이층 창가 자리를 좋아해. 저 멀리 궁전까지도 훤히 보이거든. 궁전 앞에 빨간 옷을 입은 근위병들이 나란히 줄지어 척척척.",
+      "srcPage": 4,
+      "srcSentenceEA": 4,
+      "srcWordEA": 27
+    },
+    {
+      "srcTextID": "97281",
+      "srcText": "\"야옹, 정말 멋지다!\" 창밖을 보다가 나도 모르게 큰 소리로 외쳤어. 그랬더니 꾸벅꾸벅 졸던 사람들이 화들짝 깨고 말았어. 이키, 어서 내려야겠어.",
+      "srcPage": 5,
+      "srcSentenceEA": 4,
+      "srcWordEA": 23
+    },
+    {
+      "srcTextID": "97283",
+      "srcText": "오늘은 지붕이 없는 이층 버스를 타 볼까? 이런, 이층이 사람들로 꽉 찼네. 이층에 타면 시내가 훨씬 잘 보일 텐데.",
+      "srcPage": 6,
+      "srcSentenceEA": 3,
+      "srcWordEA": 21
+    },
+    {
+      "srcTextID": "97282",
+      "srcText": "모두들 \"우아!\" 감탄하며 구경을 해. 다음에는 좀 더 일찍 서둘러야겠어.",
+      "srcPage": 7,
+      "srcSentenceEA": 2,
+      "srcWordEA": 12
+    },
+    {
+      "srcTextID": "97284",
+      "srcText": "이번에는 기다란 굴절 버스를 타 볼까? 굴절 버스는 꼭 전철이나 기차처럼 생겼어. 문이 열리더니 휠체어를 스르륵 내려 주고, 유모차도 스르륵 버스 안까지 데려다주네. 나는 재빨리 달려가 버스에 올라탔어.",
+      "srcPage": 8,
+      "srcSentenceEA": 4,
+      "srcWordEA": 31
+    },
+    {
+      "srcTextID": "97285",
+      "srcText": "오늘은 내가 좋아하는 331번 버스를 탈 거야. 버스를 탈 땐 번호를 잘 보고 타야 해. 앗! 331번 버스가 오네. 서둘러야겠어.",
+      "srcPage": 9,
+      "srcSentenceEA": 5,
+      "srcWordEA": 24
+    },
+    {
+      "srcTextID": "97286",
+      "srcText": "\"안녕, 맥. 좋은 아침이야!\" 331번 버스 운전기사 아저씨는 늘 콧노래를 부르며 신나게 일하지.",
+      "srcPage": 10,
+      "srcSentenceEA": 3,
+      "srcWordEA": 15
+    },
+    {
+      "srcTextID": "97287",
+      "srcText": "정류장 안내도 친절하고 재미있게 하셔. \"이번 정류장은 단풍나무 길, 네로 카페! 다음 정류장은 하얀 언덕 마을, 피시 앤 칩스!\"",
+      "srcPage": 11,
+      "srcSentenceEA": 3,
+      "srcWordEA": 20
+    },
+    {
+      "srcTextID": "97288",
+      "srcText": "하얀 언덕 마을이 가까워지면 냄새부터가 달라. 고소한 생선튀김, 감자튀김 냄새가 솔솔! 스쿨버스가 도착하는 시간에 맞춰 가면 맛있는 피시 앤 칩스를 실컷 먹을 수 있어.",
+      "srcPage": 12,
+      "srcSentenceEA": 3,
+      "srcWordEA": 26
+    },
+    {
+      "srcTextID": "97289",
+      "srcText": "하루는 피시 앤 칩스 가게에서 튀김을 먹는데 아이들이 우르르 몰려가는 거야. 아이들을 따라가 보니 공원에 크고 화려한 서커스 버스가 와 있었지. 나는 아이들과 함께 신나는 음악에 맞춰 노래하고 춤도 췄어.",
+      "srcPage": 13,
+      "srcSentenceEA": 3,
+      "srcWordEA": 32
+    },
+    {
+      "srcTextID": "97290",
+      "srcText": "오늘은 마을에 도서관 버스가 오는 날이야. 잠이나 잘까 하는데 한 아이가 큰 소리로 책을 읽는 거야. \"빅토리아 역에는 프랑스 파리로 가는 버스가 있다.\" '버스를 타고 바다 건너 프랑스 파리까지 갈 수 있다고?' 나는 그 버스가 궁금해서 견딜 수가 없었어.",
+      "srcPage": 14,
+      "srcSentenceEA": 5,
+      "srcWordEA": 41
+    },
+    {
+      "srcTextID": "97291",
+      "srcText": "나는 당장 빅토리아 역으로 가 보았지. 우아, 정말 파리로 가는 버스가 있네. 파리로 가는 버스는 엄청나게 커. 사람들이 짐을 싣는 사이에 나는 얼른 버스에 올라탔어.",
+      "srcPage": 15,
+      "srcSentenceEA": 4,
+      "srcWordEA": 28
+    },
+    {
+      "srcTextID": "97292",
+      "srcText": "부릉부릉, 버스는 한참을 달려 배에 올라탔어. 이제 바다를 건너면 프랑스래. 나는 프랑스의 버스도 타 볼 거야.",
+      "srcPage": 16,
+      "srcSentenceEA": 3,
+      "srcWordEA": 18
+    }
+  ]
+}
