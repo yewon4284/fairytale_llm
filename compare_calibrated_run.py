@@ -66,7 +66,16 @@ def main():
                      help="[모드 2] ground_truth 라벨만 가져올 jsonl (predicted/flagged는 무시)")
     ap.add_argument("--before", default=None, help="[모드 2] 어댑터 없이 현재 코드로 돌린 eval_test_dataset.py 결과 json")
     ap.add_argument("--after", default=None, help="[모드 2] 재보정 어댑터로 현재 코드로 돌린 eval_test_dataset.py 결과 json")
+    ap.add_argument("--restrict-files", default=None,
+                     help="split_train_holdout.py가 만든 holdout_files.json 경로. 지정하면 이 목록에 "
+                          "있는 파일만으로 비교/지표를 계산 (학습 때 한 번도 안 본 진짜 held-out 성능 확인용)")
     args = ap.parse_args()
+
+    restrict = None
+    if args.restrict_files:
+        with open(args.restrict_files, encoding="utf-8") as f:
+            restrict = set(json.load(f))
+        print(f"[held-out 전용 모드] {args.restrict_files}의 {len(restrict)}건으로만 비교/지표 계산\n")
 
     mode2 = args.ground_truth and args.before and args.after
     mode1 = args.baseline and args.calibrated
@@ -126,6 +135,11 @@ def main():
         if unmatched:
             print(f"  [경고] baseline에는 있지만 calibrated 결과에 없는 파일 {len(unmatched)}개 (건너뜀): "
                   f"{unmatched[:5]}{'...' if len(unmatched) > 5 else ''}")
+
+    if restrict:
+        before_n = len(matched)
+        matched = [r for r in matched if r["filename"] in restrict]
+        print(f"held-out 제한 적용: {before_n}건 -> {len(matched)}건")
 
     n = len(matched)
     print(f"\nground_truth와 매칭되어 실제 비교 가능한 편수: {n}\n")

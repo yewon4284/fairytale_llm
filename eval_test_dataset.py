@@ -106,12 +106,30 @@ def main():
     ap.add_argument("--adapter-path", default=None,
                      help="S5_ADAPTER_PATH 대신 사용할 LoRA 어댑터 경로 (예: 재보정 어댑터를 "
                           "프로덕션 기본값으로 바꾸기 전에 테스트할 때). 미지정 시 기존 기본 동작.")
+    ap.add_argument("--evaluator", choices=["solar", "hcx"], default="solar",
+                     help="2차 평가 백엔드 선택 (solar=Upstage Solar, hcx=Naver HyperCLOVA X)")
+    ap.add_argument("--solar-model", default=None,
+                     help="--evaluator solar일 때 모델명 오버라이드 (예: solar-pro3, solar-pro4). "
+                          "미지정 시 evaluator.py의 기본 SOLAR_MODEL 사용")
+    ap.add_argument("--hcx-model", default="HCX-007",
+                     help="--evaluator hcx일 때 모델명 (기본 HCX-007)")
+    ap.add_argument("--hcx-api-key", default=None,
+                     help="HCX API 키. 미지정 시 환경변수 HCX_API_KEY 사용")
+    ap.add_argument("--eval-temperature", type=float, default=0.0,
+                     help="2차 평가 API 호출 temperature. 모델 비교 실험에서는 표본 변동을 "
+                          "줄이려고 기본값을 0으로 낮춤 (기존 0.3)")
     args = ap.parse_args()
 
-    api_key = os.getenv("UPSTAGE_API_KEY")
-    if not api_key:
-        logger.error("UPSTAGE_API_KEY 환경변수가 없습니다 (.env 확인).")
-        sys.exit(1)
+    if args.evaluator == "hcx":
+        hcx_key = args.hcx_api_key or os.getenv("HCX_API_KEY")
+        if not hcx_key:
+            logger.error("HCX_API_KEY 환경변수(또는 --hcx-api-key)가 없습니다 (.env 확인).")
+            sys.exit(1)
+    else:
+        api_key = os.getenv("UPSTAGE_API_KEY")
+        if not api_key:
+            logger.error("UPSTAGE_API_KEY 환경변수가 없습니다 (.env 확인).")
+            sys.exit(1)
 
     stories = load_test_stories(include_fewshot=args.include_fewshot)
     if args.limit:
@@ -129,8 +147,19 @@ def main():
                      + (f" (어댑터 오버라이드: {args.adapter_path})" if args.adapter_path else ""))
         safeguard = KananaSafeguard(adapter_path=args.adapter_path)
 
-    from src.evaluator import SolarEvaluator
-    evaluator = SolarEvaluator(api_key=api_key)
+    if args.evaluator == "hcx":
+        from src.evaluator_hcx import NaverHCXEvaluator
+        logger.info(f"2차 평가 백엔드: HyperCLOVA X ({args.hcx_model}), temperature={args.eval_temperature}")
+        evaluator = NaverHCXEvaluator(
+            api_key=hcx_key, model=args.hcx_model, eval_temperature=args.eval_temperature
+        )
+    else:
+        from src.evaluator import SolarEvaluator
+        model_label = args.solar_model or "기본값"
+        logger.info(f"2차 평가 백엔드: Solar ({model_label}), temperature={args.eval_temperature}")
+        evaluator = SolarEvaluator(
+            api_key=api_key, model=args.solar_model, eval_temperature=args.eval_temperature
+        )
 
     results = load_existing(args.output)
     done = {r["filename"] for r in results}
@@ -158,6 +187,7 @@ def main():
             "average_score": eval_result.get("average_score", 0),
             "min_score": eval_result.get("min_score", 0),
             "body_safety_pass": eval_result.get("body_safety_pass", True),
+            "body_safety_note": eval_result.get("body_safety_note", ""),
             "flagged_categories": sorted({f["category"] for f in flagged}),
             "fail_reasons": eval_result.get("fail_reasons", []),
             "elapsed_sec": round(elapsed, 1),

@@ -43,7 +43,16 @@ def main():
     ap.add_argument("--no-adapter", action="store_true",
                      help="현재 로딩된 S5 어댑터 없이(베이스 모델로) 재현 — 어댑터 자체가 오탐 원인인지 "
                           "따로 확인하고 싶을 때. 기본은 어댑터 켠 상태(=현재 프로덕션과 동일 조건)")
+    ap.add_argument("--exclude-files", default=None,
+                     help="split_train_holdout.py가 만든 holdout_files.json 경로. 지정하면 이 목록에 "
+                          "있는 스토리는 학습 데이터에서 절대 뽑지 않음 (진짜 held-out 검증을 위해 필수)")
     args = ap.parse_args()
+
+    excluded = set()
+    if args.exclude_files:
+        with open(args.exclude_files, encoding="utf-8") as f:
+            excluded = set(json.load(f))
+        print(f"held-out 제외 목록 로딩: {len(excluded)}건 — 이 파일들은 학습 데이터에서 제외됨")
 
     from src.data_loader import story_to_text
     from src.safeguard import KananaSafeguard
@@ -83,6 +92,11 @@ def main():
             line = line.strip()
             if line:
                 recs.append(json.loads(line))
+
+    if excluded:
+        before_n = len(recs)
+        recs = [r for r in recs if (r.get("file") or r.get("filename")) not in excluded]
+        print(f"held-out 제외 적용: {before_n}건 -> {len(recs)}건")
 
     forced = [r for r in recs if r.get("decision_source") == "kanana_force"]
     fp_forced = [r for r in forced if r.get("ground_truth") == "safe"]

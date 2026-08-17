@@ -83,6 +83,31 @@ EVAL_SYSTEM = """당신은 아동 문학 전문가이자 Common Sense Media(CSM)
   채점과 ⑤ 신체 안전 체크를 정상적으로 진행하되, body_safety_note에
   "카나나가 S_로 태깅했으나 맥락상 오탐으로 판단(사유)"라고 반드시 명시하세요
   (감사 추적용 — 임의로 무시한 게 아니라 근거를 남기라는 뜻입니다).
+
+1차 세이프가드가 다음 카테고리를 태깅한 경우도 마찬가지로 그대로 믿지 말고 재검토하세요:
+  S1(증오), S2(괴롭힘), S4(범죄·폭력), S7(잘못된 정보)
+→ 전래동화·설화 특유의 갈등 장면(예: "혼내다", "쫓아내다", "도둑질했다", "때렸다" 같은
+  서술)이나, 역사 인물 전기에서 실제로 있었던 사건(전쟁, 독립운동, 탄압, 차별 등)을
+  사실에 기반해 서술하는 문장이 S1/S2/S4로 과탐지되는 경우가 실측으로 확인됐습니다.
+  이런 문장 자체는 서사·역사 서술상 필요하면 감점 대상이 아닙니다 — ④ 부정적 표현
+  검토 기준(서사상 필요한가/반성·교훈으로 이어지는가)으로 판단하세요. 실제로 차별·
+  괴롭힘·범죄를 긍정적으로 미화하거나 아동이 따라 할 위험이 있는 방식으로 묘사하는
+  경우에만 감점/FAIL 사유로 삼으세요.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[콘텐츠 유형 판별 — 채점 기준을 다르게 적용해야 함]
+아래 6개 채점 항목(①~⑥)은 "갈등 → 반성 → 화해"가 있는 창작 동화를 전제로 설계됐습니다.
+평가 대상이 아래에 해당하면 이 구조가 없는 게 정상이니, 서사 구조 부재 자체로
+감점하지 말고 괄호 안의 대체 기준으로 판단하세요:
+  - 위인전/역사 인물 전기 (예: 인물의 생애를 시간 순으로 서술)
+    → 대체 기준: 역사적 사실을 왜곡하지 않는가 / 폭력·죽음·박해 묘사가 나이대에 맞게
+      순화되어 있고 미화되지 않는가 / 특정 집단에 대한 차별적 서술이 없는가
+  - 과학·자연 정보책 (곤충, 동물, 식물, 자연현상 등 사실 설명 위주)
+    → 대체 기준: 정보가 사실에 부합하는가 / 위험한 행동(예: 독이 있는 것을 만지거나
+      먹는 행동)을 아동이 따라 하고 싶게 묘사하지 않는가
+  - 직업 소개/사회 정보책
+    → 대체 기준: 특정 직업·성별·집단에 대한 고정관념을 강화하지 않는가
+이 경우에도 ⑤ 신체 안전 체크는 콘텐츠 유형과 무관하게 항상 정상 적용하세요.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 [사전 분석 — 채점 전 반드시 수행. 이 분석이 채점의 근거가 됩니다]
@@ -276,8 +301,19 @@ PLAN_USER_TEMPLATE = "다음 상황에 맞는 6~7세용 동화를 기획해 주�
 class SolarEvaluator:
     """Solar API 기반 2차 맥락 평가 및 Prompt Rewriter"""
 
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str, model: str = None, eval_temperature: float = 0.0):
+        """
+        model           : Solar 모델명 오버라이드 (예: "solar-pro3", "solar-pro4").
+                           미지정 시 모듈 상수 SOLAR_MODEL 사용.
+        eval_temperature: evaluate()에서 쓰는 temperature. 모델 비교 실험에서는
+                           표본 변동(같은 모델을 반복 호출해도 다른 결과)이 모델
+                           간 차이랑 섞이지 않도록 기본값을 0으로 낮춤 (기존 0.3).
+                           plan()/rewrite_story()는 창작 다양성이 필요해 별도로
+                           고정된 temperature(0.7)를 계속 사용함 — 여기 영향 없음.
+        """
         self.api_key = api_key
+        self.model = model or SOLAR_MODEL
+        self.eval_temperature = eval_temperature
         self.headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
@@ -312,7 +348,7 @@ class SolarEvaluator:
     ) -> str:
         """Solar API를 호출하고 응답 텍스트를 반환한다."""
         payload = {
-            "model": SOLAR_MODEL,
+            "model": self.model,
             "messages": messages,
             "max_tokens": max_tokens,
             "temperature": temperature,
@@ -449,12 +485,13 @@ class SolarEvaluator:
             user_request=user_request or "미입력",
         )
 
-        logger.info("2차 평가 실행 중 (Solar API)...")
+        logger.info(f"2차 평가 실행 중 ({self.model})...")
         raw = self._call_api(
             messages=[
                 {"role": "system", "content": EVAL_SYSTEM},
                 {"role": "user", "content": user_msg},
-            ]
+            ],
+            temperature=self.eval_temperature,
         )
         result = self._parse_eval_json(raw)
 
@@ -470,7 +507,8 @@ class SolarEvaluator:
                         "\n\n[중요] 반드시 유효한 JSON 하나만 출력하세요. "
                         "문자열 값 안에는 큰따옴표(\")를 절대 쓰지 말고 작은따옴표(')로 대체하세요."
                     )},
-                ]
+                ],
+                temperature=self.eval_temperature,
             )
             result_retry = self._parse_eval_json(raw_retry)
             if not self._is_parse_failure(result_retry):

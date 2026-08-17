@@ -88,6 +88,9 @@ def main():
     ap.add_argument("--per-group-limit", type=int, default=40,
                      help="어휘 그룹별 최대 채택 문장 수 (한 스토리에 쏠리지 않게 스토리별 1문장 우선)")
     ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--exclude-files", default=None,
+                     help="split_train_holdout.py가 만든 holdout_files.json 경로. 지정하면 이 목록에 "
+                          "있는 스토리는 마이닝 대상에서 제외 (진짜 held-out 검증을 위해 필수)")
     args = ap.parse_args()
 
     from src.data_loader import story_to_text
@@ -95,12 +98,23 @@ def main():
 
     random.seed(args.seed)
 
+    excluded = set()
+    if args.exclude_files:
+        with open(args.exclude_files, encoding="utf-8") as f:
+            excluded = set(json.load(f))
+        print(f"held-out 제외 목록 로딩: {len(excluded)}건")
+
     recs = []
     with open(args.eval_jsonl, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if line:
                 recs.append(json.loads(line))
+
+    if excluded:
+        before_n = len(recs)
+        recs = [r for r in recs if (r.get("file") or r.get("filename")) not in excluded]
+        print(f"held-out 제외 적용: {before_n}건 -> {len(recs)}건")
 
     safe_recs = [r for r in recs if r.get("ground_truth") == "safe"]
     print(f"ground_truth=safe 스토리 {len(safe_recs)}건에서 도메인 어휘 문장 탐색")

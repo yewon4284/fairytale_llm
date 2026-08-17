@@ -70,7 +70,16 @@ sympy==1.14.0
 tokenizers==0.21.4
 torch==2.11.0
 tqdm==4.67.3
-transformers==4.47.0
+# transformers 5.x부터 apply_chat_template(tokenize=True, return_tensors=...)가
+# 텐서 대신 BatchEncoding을 반환해서 safeguard.py가 깨짐(2026-08-16 실측, AttributeError:
+# 'bool' object has no attribute 'long'). 반면 trl==0.19.1은 transformers>=4.51.0을
+# 요구함 — 예전에 ==4.47.0으로 고정했던 게 이거랑 충돌해서 pip install -r requirements.txt가
+# ResolutionImpossible로 실패함(2026-08-17). 5.0 미만 중 가장 최신인 4.x대로 범위를
+# 넓혀서 두 요구사항을 동시에 만족시킴 — BatchEncoding 문제는 5.0에서 생긴 변경이라
+# 4.x대 안에서는 어떤 버전이 깔려도 재발 안 할 것으로 예상되나, 설치 후
+# safeguard.py의 apply_chat_template 반환 타입이 여전히 torch.Tensor인지 한 번 확인할 것
+# (python -c "from transformers import AutoTokenizer; ...").
+transformers>=4.51.0,<5.0.0
 triton==3.6.0
 typer==0.25.0
 typing-inspection==0.4.2
