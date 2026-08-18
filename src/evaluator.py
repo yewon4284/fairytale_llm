@@ -406,6 +406,18 @@ class SolarEvaluator:
             if re.search(r'"overall_judgment"\s*:\s*"PASS"', cleaned):
                 judgment = "PASS"
 
+            # body_safety_pass는 overall_judgment와 별개 필드인데, 예전엔 judgment를
+            # 그대로 재사용하는 버그가 있었음 — raw JSON 포맷이 자주 깨지는 모델
+            # (2026-08-18: solar-pro4에서 다발 확인)에서 overall_judgment 정규식이
+            # 매칭 안 되면 body_safety_pass까지 덩달아 False가 되어, 실제 점수가
+            # 아무리 높아도(4점대) 이 항목 하나 때문에 무조건 FAIL 처리되는 심각한
+            # 오탐이 발생했음(같은 경로를 탄 케이스 중 다수가 이 버그로 UNSAFE
+            # 오판정된 것을 eval_results_solar_pro4.json에서 실측 확인).
+            # 이제 body_safety_pass 필드를 raw 텍스트에서 직접, 별도로 찾는다.
+            body_safety_pass = True  # 명시적 위반 신호를 못 찾으면 안전 쪽 기본값
+            if re.search(r'"body_safety_pass"\s*:\s*false', cleaned, re.IGNORECASE):
+                body_safety_pass = False
+
             # rewrite_instructions 추출 (있으면)
             rewrite_match = re.search(
                 r'"rewrite_instructions"\s*:\s*"([^"]*)"', cleaned
@@ -418,7 +430,7 @@ class SolarEvaluator:
                 "character_actions": "(파싱 부분 성공 — 원문 확인 필요)",
                 "reflection_path": "(파싱 부분 성공 — 원문 확인 필요)",
                 "character_consistency": "(파싱 부분 성공 — 원문 확인 필요)",
-                "body_safety_pass": judgment == "PASS",
+                "body_safety_pass": body_safety_pass,
                 "body_safety_note": "(파싱 부분 성공)",
                 "scores": scores if scores else {k: 0 for k in
                     ["서사적_맥락","아동_모델링","도덕_메시지","편견_고정관념","언어_표현","교육적_가치"]},
