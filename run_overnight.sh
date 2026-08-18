@@ -102,14 +102,43 @@ echo "================================================================"
 echo "  1/4. 평가 백엔드 스모크테스트 (본 실행 전 2편만 먼저 확인)"
 echo "================================================================"
 
+# check_smoke_result: run_step()은 exit code 0이면 "성공"으로 찍는데, 이게
+# API 키 401/403처럼 "스크립트는 안 죽지만 스토리 전부 조용히 건너뛰어짐" 케이스를
+# 못 잡는다는 게 2026-08-18 밤에 실측으로 확인됨 (전부 401 Unauthorized였는데
+# exit 0으로 끝나서 "성공"으로 오인, 다음날 아침까지 몰랐음). 로그에서 실제
+# "평가 대상 N편" 대비 "SAFE+UNSAFE" 합계가 0이면 진짜 실패로 재분류한다.
+check_smoke_result() {
+    local name="$1" logfile="$2"
+    if grep -qE "SAFE [0-9]+편 / UNSAFE [0-9]+편 / 전체 0편" "$logfile"; then
+        log_status "❌ $name: exit 0이었지만 실제 처리된 스토리가 0건임 — API 키/인증 문제일 가능성 높음. 로그 확인: $logfile"
+        tail -15 "$logfile" | sed 's/^/    /' >> "$STATUS_FILE"
+        return 1
+    fi
+    return 0
+}
+
 run_step "02_smoke_solar_pro3" python eval_test_dataset.py --limit 2 --evaluator solar --solar-model solar-pro3 --output "$LOGDIR/smoke_pro3.json"
+if check_smoke_result "02_smoke_solar_pro3" "$LOGDIR/02_smoke_solar_pro3.log"; then
+    log_status "✅ Solar Pro3 스모크테스트 실제 결과 확인됨"
+else
+    log_status "❌ 치명적: Solar Pro3 API 인증 실패로 보임. UPSTAGE_API_KEY를 확인/재발급 후 다시 실행하세요. 본 실행을 중단합니다."
+    exit 1
+fi
+
 run_step "03_smoke_solar_pro4" python eval_test_dataset.py --limit 2 --evaluator solar --solar-model solar-pro4 --output "$LOGDIR/smoke_pro4.json"
+if check_smoke_result "03_smoke_solar_pro4" "$LOGDIR/03_smoke_solar_pro4.log"; then
+    log_status "✅ Solar Pro4 스모크테스트 실제 결과 확인됨"
+else
+    log_status "❌ 치명적: Solar Pro4 API 인증 실패로 보임. UPSTAGE_API_KEY를 확인/재발급 후 다시 실행하세요. 본 실행을 중단합니다."
+    exit 1
+fi
 
 if [ "$HCX_AVAILABLE" = "1" ]; then
-    if run_step "04_smoke_hcx" python eval_test_dataset.py --limit 2 --evaluator hcx --output "$LOGDIR/smoke_hcx.json"; then
+    if run_step "04_smoke_hcx" python eval_test_dataset.py --limit 2 --evaluator hcx --output "$LOGDIR/smoke_hcx.json" \
+        && check_smoke_result "04_smoke_hcx" "$LOGDIR/04_smoke_hcx.log"; then
         log_status "✅ HCX 스모크테스트 통과 — 본 실행에 포함합니다"
     else
-        log_status "⚠ HCX 스모크테스트 실패 — src/evaluator_hcx.py의 응답 파싱을 실제 API 형식에 맞게 고쳐야 함. 본 실행에서는 건너뜁니다."
+        log_status "⚠ HCX 스모크테스트 실패(또는 실제 결과 0건) — src/evaluator_hcx.py 응답 파싱이나 HCX_API_KEY를 확인할 것. 본 실행에서는 건너뜁니다."
         HCX_AVAILABLE=0
     fi
 fi
