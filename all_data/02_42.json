@@ -1,0 +1,125 @@
+{
+  "title": "진짜 보물은 어디에?",
+  "author": "양승현",
+  "illustrator": "원유일",
+  "isbn": "9788929110857",
+  "readAge": "유아",
+  "publishedYear": 2015,
+  "publisher": "글뿌리",
+  "classification": "자연탐구",
+  "paragraphInfoCount": 16,
+  "paragraphInfo": [
+    {
+      "srcTextID": "151900",
+      "srcText": "어느 마을에 한 과학자와 세 아들이 살았어요. 세 아들은 날마다 서로 아옹다옹 으르렁. 속이 상한 과학자는 결국 병이 나서 드러누웠지요.",
+      "srcPage": 1,
+      "srcSentenceEA": 3,
+      "srcWordEA": 22
+    },
+    {
+      "srcTextID": "151899",
+      "srcText": "과학자는 세 아들에게 공책을 주며 말했어요. \"얘들아, 이건 보물 지도란다. 지도를 잘 보고 따라가면 보물을 찾을 수 있지.\"",
+      "srcPage": 2,
+      "srcSentenceEA": 3,
+      "srcWordEA": 19
+    },
+    {
+      "srcTextID": "151901",
+      "srcText": "삼 형제는 보물찾기에 나섰지요. 첫째가 공책을 뒤적뒤적. \"여기 보물 지도가 있네!\"",
+      "srcPage": 3,
+      "srcSentenceEA": 3,
+      "srcWordEA": 12
+    },
+    {
+      "srcTextID": "151904",
+      "srcText": "삼 형제는 지도를 따라 풀숲으로 갔어요. 풀숲에는 자동차가 한 대 있었지요. 첫째가 자동차를 살피며 말했지요.",
+      "srcPage": 4,
+      "srcSentenceEA": 3,
+      "srcWordEA": 17
+    },
+    {
+      "srcTextID": "151903",
+      "srcText": "\"자동차를 움직이려면 엔진이 필요해. 기름이 엔진을 돌게 하고, 엔진이 자동차 바퀴를 돌게 하지.\" 첫째가 자동차에 엔진을 달자 자동차가 부릉부릉! ",
+      "srcPage": 5,
+      "srcSentenceEA": 3,
+      "srcWordEA": 21
+    },
+    {
+      "srcTextID": "151902",
+      "srcText": "\"보물을 찾아 출발!\" 둘째와 셋째는 얼른 자동차에 올라탔어요. \"큰형 혼자 보물을 차지하면 안 되지.\"",
+      "srcPage": 6,
+      "srcSentenceEA": 3,
+      "srcWordEA": 14
+    },
+    {
+      "srcTextID": "151905",
+      "srcText": "삼 형제는 자동차를 타고 부릉부릉 부르릉. 지도를 따라 바닷가로 갔어요. 바닷가에는 배가 한 척 있었어요.",
+      "srcPage": 7,
+      "srcSentenceEA": 3,
+      "srcWordEA": 17
+    },
+    {
+      "srcTextID": "151906",
+      "srcText": "\"배를 움직이려면 엔진이 필요해. 엔진이 돌면서 스크루를 돌리니까.\" 둘째는 배에 엔진을 달고 스크루도 달았어요.",
+      "srcPage": 8,
+      "srcSentenceEA": 3,
+      "srcWordEA": 16
+    },
+    {
+      "srcTextID": "151907",
+      "srcText": "엔진이 돌자 스크루가 돌아가면서 배가 둥둥. 첫째와 셋째는 얼른 배에 올라탔어요. \"둘째가 혼자 보물을 차지하면 안 되지.\"",
+      "srcPage": 9,
+      "srcSentenceEA": 3,
+      "srcWordEA": 17
+    },
+    {
+      "srcTextID": "151908",
+      "srcText": "부웅부웅! 배는 힘차게 나아갔어요. 이윽고 배가 섬에 다다랐어요. \"앗! 저기 잠수함이 있다!\" 삼 형제는 잠수함을 보고 눈이 반짝.",
+      "srcPage": 10,
+      "srcSentenceEA": 4,
+      "srcWordEA": 23
+    },
+    {
+      "srcTextID": "151909",
+      "srcText": "\"잠수함을 움직이려면 밸러스트 탱크가 필요해. 잠수함은 밸러스트 탱크에 물을 채우면 가라앉고 물을 빼면 뜨지.\" 셋째는 잠수함에 밸러스트 탱크를 달았어요.",
+      "srcPage": 11,
+      "srcSentenceEA": 3,
+      "srcWordEA": 21
+    },
+    {
+      "srcTextID": "151910",
+      "srcText": "밸러스트 탱크에 물을 채우자 잠수함이 물속으로 꾸르륵 가라앉기 시작했지요. 삼 형제는 지도를 따라 섬 가운데로 갔어요. 나무 사이에 비행기가 한 대 있었지요.",
+      "srcPage": 12,
+      "srcSentenceEA": 3,
+      "srcWordEA": 24
+    },
+    {
+      "srcTextID": "151913",
+      "srcText": "첫째가 말했어요. \"비행기를 움직이려면 뭐가 필요할까?\" 둘째가 대답했지요.",
+      "srcPage": 13,
+      "srcSentenceEA": 3,
+      "srcWordEA": 9
+    },
+    {
+      "srcTextID": "151911",
+      "srcText": "\"날개가 필요해!\" 셋째도 질세라 말했어요. \"날개 위쪽은 볼록하고 아래쪽은 평평해야 해.\"",
+      "srcPage": 14,
+      "srcSentenceEA": 3,
+      "srcWordEA": 12
+    },
+    {
+      "srcTextID": "151912",
+      "srcText": "삼 형제는 함께 날개를 만들어 비행기에 달았어요. 그러자 비행기가 부르릉 털털. 삼 형제는 얼른 비행기에 올라탔어요.",
+      "srcPage": 15,
+      "srcSentenceEA": 3,
+      "srcWordEA": 18
+    },
+    {
+      "srcTextID": "151914",
+      "srcText": "삼 형제는 비행기를 타고 하늘 높이 날아올랐어요. 지도를 따라 사막으로 날아갔지요. \"앗, 저기야! 저기!\" 모래 언덕 사이에서 우주선이 번쩍 빛났어요.",
+      "srcPage": 16,
+      "srcSentenceEA": 5,
+      "srcWordEA": 23
+    }
+  ]
+}

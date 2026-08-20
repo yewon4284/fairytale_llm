@@ -1,0 +1,132 @@
+{
+  "title": "새 가족이 된 로봇, 토토",
+  "author": "정은미",
+  "illustrator": "전경선",
+  "isbn": "9788929110871",
+  "readAge": "유아",
+  "publishedYear": 2015,
+  "publisher": "글뿌리",
+  "classification": "자연탐구",
+  "paragraphInfoCount": 17,
+  "paragraphInfo": [
+    {
+      "srcTextID": "148369",
+      "srcText": "\"초롱아, 빨리 일어나!\" \"조금만 더 잘게요.\" 초롱이는 이불 속에서 꼼지락꼼지락. \"초롱아, 이따 아빠가 준비한 선물이 도착할 거야. 잘 맞이하렴. 엄마 나갔다 올게.\"",
+      "srcPage": 1,
+      "srcSentenceEA": 6,
+      "srcWordEA": 25
+    },
+    {
+      "srcTextID": "148370",
+      "srcText": "초롱이는 이불 밖으로 얼굴을 쏙 내밀었어요. '아빠 선물이라고?' 그때였어요. 띵동띵동! 앗! 웬 깡통 로봇이 문 앞에 서 있네요. \"안녕! 난 토토야. 초롱아, 네게 보여 줄 게 있어.\"",
+      "srcPage": 2,
+      "srcSentenceEA": 8,
+      "srcWordEA": 33
+    },
+    {
+      "srcTextID": "148371",
+      "srcText": "토토가 빨간 단추를 톡 누르자 토토의 가슴에 달린 화면에 아빠 얼굴이 나타났어요. \"초롱아! 토토는 아빠가 너를 위해 만든 로봇이란다. 토토도 우리 가족이니 잘 지내렴.\"",
+      "srcPage": 3,
+      "srcSentenceEA": 3,
+      "srcWordEA": 26
+    },
+    {
+      "srcTextID": "148372",
+      "srcText": "토토가 부엌에서 달그락달그락. \"초롱아, 너 달걀 프라이 좋아하지?\" 프라이팬에서 달걀이 노릇노릇. \"어떻게 알았어?\" 초롱이는 눈이 동그래졌어요.",
+      "srcPage": 4,
+      "srcSentenceEA": 5,
+      "srcWordEA": 18
+    },
+    {
+      "srcTextID": "148373",
+      "srcText": "\"내 머리 속에 칩이 들어 있거든. 이 칩 속에 너에 대한 모든 것이 들어 있어. 어디 한번 말해 볼까? 초롱이가 가장 좋아하는 운동은 축구. 초롱이의 취미는 늦잠 자기, 엄마 말 안 듣기.\" \"알았어! 그만해!\" 초롱이는 부끄러워 얼굴이 빨개졌어요.",
+      "srcPage": 5,
+      "srcSentenceEA": 7,
+      "srcWordEA": 44
+    },
+    {
+      "srcTextID": "148374",
+      "srcText": "\"초롱아, 아침밥 먹어\" \"토토야, 너도 같이 먹자.\" \"난 사람이 먹는 음식은 못 먹어. 내 밥은 따로 있지. 바로 이거야!\" 토토는 콘센트를 가리켰어요. 그리고 플러그를 꽂아 전기를 맛있게 냠냠.",
+      "srcPage": 6,
+      "srcSentenceEA": 7,
+      "srcWordEA": 32
+    },
+    {
+      "srcTextID": "148375",
+      "srcText": "\"초롱아, 축구하자!\" \"와, 토토 너, 축구도 할 줄 알아? 좋아, 요 앞 공원으로 나가자!\"",
+      "srcPage": 7,
+      "srcSentenceEA": 3,
+      "srcWordEA": 15
+    },
+    {
+      "srcTextID": "148376",
+      "srcText": "먼저 초롱이가 공을 몰고 요리조리 쉭쉭! \"슛! 골인이다!\" 초롱이는 좋아서 팔짝팔짝. 그사이 토토가 공을 몰고 이리저리 씽씽! \"슛! 골인!\" 토토도 좋아서 어깨를 들썩들썩.",
+      "srcPage": 8,
+      "srcSentenceEA": 6,
+      "srcWordEA": 28
+    },
+    {
+      "srcTextID": "148377",
+      "srcText": "집으로 돌아오자마자 토토는 청소를 시작했어요. 먼지떨이로 탈탈. 진공청소기로 윙윙. 걸레로 쓱쓱 싹싹.",
+      "srcPage": 9,
+      "srcSentenceEA": 4,
+      "srcWordEA": 15
+    },
+    {
+      "srcTextID": "148378",
+      "srcText": "\"우아! 깨끗해졌네! 토토야, 힘들지? 좀 쉬었다 해.\" 토토는 고개를 절레절레 저었어요. \"로봇은 사람과 달라서 온종일 일해도 문제없어.\"",
+      "srcPage": 10,
+      "srcSentenceEA": 5,
+      "srcWordEA": 21
+    },
+    {
+      "srcTextID": "148379",
+      "srcText": "\"토토야, 그림 그릴 줄 알아?\" \"그림이 뭐야? 내 칩 속에는 그림이 없는데. 네가 가르쳐 주면 해 볼게.\"",
+      "srcPage": 11,
+      "srcSentenceEA": 4,
+      "srcWordEA": 19
+    },
+    {
+      "srcTextID": "148380",
+      "srcText": "초롱이가 먼저 동글동글 동그라미를 그렸어요. \"자, 토토야. 따라 그려 봐.\" 하지만 토토의 동그라미는 삐뚤빼뚤.",
+      "srcPage": 12,
+      "srcSentenceEA": 4,
+      "srcWordEA": 16
+    },
+    {
+      "srcTextID": "148381",
+      "srcText": "그런데 이걸 어쩌면 좋아요. 치지직치지직. 갑자기 토토가 우뚝 멈춰 버렸어요. \"토토야, 왜 그래?\" 초롱이는 깜짝 놀라 소리쳤어요. 하지만 토토는 움직이지도, 말도 못 했어요.",
+      "srcPage": 13,
+      "srcSentenceEA": 6,
+      "srcWordEA": 27
+    },
+    {
+      "srcTextID": "148383",
+      "srcText": "아빠는 집에 오자마자 토토를 실험실로 옮겼어요. \"휴, 칩이 멀쩡해서 다행이야. 이 칩이 망가지면 토토를 고칠 수 없단다.\" 아빠가 토토를 살펴보며 말했어요.",
+      "srcPage": 14,
+      "srcSentenceEA": 4,
+      "srcWordEA": 23
+    },
+    {
+      "srcTextID": "148382",
+      "srcText": "\"아빠, 그럼 토토는 괜찮아요?\" \"그럼! 며칠만 기다리렴. 다시 멋진 로봇이 될 테니까.\"",
+      "srcPage": 15,
+      "srcSentenceEA": 3,
+      "srcWordEA": 14
+    },
+    {
+      "srcTextID": "148385",
+      "srcText": "\"초롱아, 일어나! 달걀 프라이 다 됐어.\" 누군가 초롱이를 흔들었어요.",
+      "srcPage": 16,
+      "srcSentenceEA": 3,
+      "srcWordEA": 11
+    },
+    {
+      "srcTextID": "148384",
+      "srcText": "\"음, 싫어. 조금만 더 잘래.\" 그러다 초롱이의 눈이 번쩍! \"어? 토토야!\" \"초롱아!\" 초롱이와 토토는 서로 꼭 끌어안았답니다.",
+      "srcPage": 17,
+      "srcSentenceEA": 5,
+      "srcWordEA": 21
+    }
+  ]
+}

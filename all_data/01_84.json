@@ -1,0 +1,146 @@
+{
+  "title": "소리를 맞혀 봐!",
+  "author": "이지영",
+  "illustrator": "곽소영",
+  "isbn": "9791193449196",
+  "readAge": "유아",
+  "publishedYear": 2023,
+  "publisher": "아람북스",
+  "classification": "의사소통",
+  "paragraphInfoCount": 19,
+  "paragraphInfo": [
+    {
+      "srcTextID": "142063",
+      "srcText": "조용한 숲속에서 소리팬동이 실시간 방송을 시작했어요. \"안녕! 잠시 뒤 '소리팬동의 소리 수수께끼 대회'가 열려요. 다람쥐 팀, 펭귄 팀, 캥거루 팀이 참여하기로 했어요.",
+      "srcPage": 1,
+      "srcSentenceEA": 4,
+      "srcWordEA": 25
+    },
+    {
+      "srcTextID": "142065",
+      "srcText": "많이 응원해 주시고, 여러분도 문제를 풀어 보세요.\" \"소리팬동의 소리 수수께끼! 지금 바로 시작합니다!\"",
+      "srcPage": 2,
+      "srcSentenceEA": 3,
+      "srcWordEA": 14
+    },
+    {
+      "srcTextID": "142064",
+      "srcText": "나무가 우거진 숲속에서 소리팬동이 말했어요. \"쉿! 잘 들어 보세요.\" \"맴맴, 맴맴!\"",
+      "srcPage": 3,
+      "srcSentenceEA": 3,
+      "srcWordEA": 12
+    },
+    {
+      "srcTextID": "142066",
+      "srcText": "모두 귀를 쫑긋 세우고 소리를 들었어요. 세 가족은 쏙닥쏙닥 이야기를 나누더니 팻말에 답을 썼어요. 다람쥐 팀은 '매미', 펭귄 팀은 '메뚜기', 캥거루 팀은 '사마귀'라고 적었네요. 어떤 팀이 정답을 맞혔을까요?",
+      "srcPage": 4,
+      "srcSentenceEA": 7,
+      "srcWordEA": 34
+    },
+    {
+      "srcTextID": "142068",
+      "srcText": "\"여기는 여러분이 좋아하는 장난감 가게입니다. 무슨 소리가 들리나요?\" 소리팬동이 두 번째 문제를 냈어요.",
+      "srcPage": 5,
+      "srcSentenceEA": 3,
+      "srcWordEA": 15
+    },
+    {
+      "srcTextID": "142067",
+      "srcText": "\"쉿, 잘 들어 보세요.\" \"휭휭! 휭휭!\" 날개 돌아가는 소리가 들려요. 다람쥐 팀은 '탱크', 펭귄 팀은 '세탁기', 캥거루 팀은 '헬리콥터'라고 적었어요. 어떤 팀이 정답을 맞혔을까요?",
+      "srcPage": 6,
+      "srcSentenceEA": 8,
+      "srcWordEA": 34
+    },
+    {
+      "srcTextID": "142069",
+      "srcText": "\"친구들, 나는 지금 동물원에 와 있어요. 무슨 소리가 들리나요?\" \"킥킥, 킥킥!\"",
+      "srcPage": 7,
+      "srcSentenceEA": 3,
+      "srcWordEA": 12
+    },
+    {
+      "srcTextID": "142070",
+      "srcText": "동물의 웃음소리가 들려요. 다람쥐 팀은 '재규어', 펭귄 팀은 '하이에나', 캥거루 팀은 '원숭이'라고 쓴 팻말을 보여 주었어요. 어떤 팀이 정답을 맞혔을까요?",
+      "srcPage": 8,
+      "srcSentenceEA": 6,
+      "srcWordEA": 28
+    },
+    {
+      "srcTextID": "142071",
+      "srcText": "소리팬동이 다음 장소로 이동할 때였어요. 찰칵찰칵 사진 찍는 소리와 함께 소리팬동의 팬들이 하나둘 모여들었어요. 소리팬동은 당황해서 어색하게 인사를 했어요. 그리고 다음 진행을 위해 서둘러 자리를 떠났지요.",
+      "srcPage": 9,
+      "srcSentenceEA": 4,
+      "srcWordEA": 29
+    },
+    {
+      "srcTextID": "142074",
+      "srcText": "잠시 뒤, 소리 수수께끼 대회가 다시 열렸어요. \"친구들, 나는 지금 공원에 나와 있어요. 무슨 소리가 들리나요?",
+      "srcPage": 10,
+      "srcSentenceEA": 3,
+      "srcWordEA": 17
+    },
+    {
+      "srcTextID": "142073",
+      "srcText": "쉿, 잘 들어 보세요.\" \"귀뚤 귀뚤!\" 곤충의 노랫소리가 들려요.",
+      "srcPage": 11,
+      "srcSentenceEA": 3,
+      "srcWordEA": 10
+    },
+    {
+      "srcTextID": "142072",
+      "srcText": "다람쥐 팀은 '베짱이', 펭귄 팀은 '귀뚜라미', 캥거루 팀은 '풍뎅이'를 적었어요. 어떤 팀이 정답을 맞혔을까요?",
+      "srcPage": 12,
+      "srcSentenceEA": 5,
+      "srcWordEA": 18
+    },
+    {
+      "srcTextID": "142076",
+      "srcText": "소리 수수께끼 대회의 마지막 시간이에요. 소리팬동은 여러 동물들이 살고 있는 농장에 왔어요. 참가 팀들은 두근두근 떨리는 마음으로 소리에 귀를 기울였어요.",
+      "srcPage": 13,
+      "srcSentenceEA": 3,
+      "srcWordEA": 22
+    },
+    {
+      "srcTextID": "142075",
+      "srcText": "\"꿀꿀! 꿀꿀!\" 귀여운 소리가 들려요. 다람쥐 팀은 '고양이', 펭귄 팀은 '개', 캥거루 팀은 '돼지'라고 쓴 팻말을 보여 주었어요. 어떤 팀이 정답을 맞혔을까요?",
+      "srcPage": 14,
+      "srcSentenceEA": 7,
+      "srcWordEA": 29
+    },
+    {
+      "srcTextID": "142078",
+      "srcText": "수수께끼 대회가 끝나자 모두 공원 스튜디오에 모였어요. 과연 우승 팀은 누구일까요? 소리팬동은 흥분한 목소리로 말했어요.",
+      "srcPage": 15,
+      "srcSentenceEA": 3,
+      "srcWordEA": 17
+    },
+    {
+      "srcTextID": "142077",
+      "srcText": "\"축하합니다! 우승 팀은 세 문제를 맞힌 캥거루 팀입니다!\" 캥거루 팀은 매우 기뻐하며 '아빠와 함께 1박 2일 여행권'을 받았어요.",
+      "srcPage": 16,
+      "srcSentenceEA": 4,
+      "srcWordEA": 22
+    },
+    {
+      "srcTextID": "142079",
+      "srcText": "그런데 소리팬동이 마이크 선에 걸려 넘어지고 말았어요. 그때 판다 탈이 휙 날아갔지요. 사람들은 정말 깜짝 놀랐어요. 소리팬동이 꼬마 아이였기 때문이에요. 하지만 꼬마 소리팬동의 진행 솜씨에 모두 감탄했답니다.",
+      "srcPage": 17,
+      "srcSentenceEA": 5,
+      "srcWordEA": 31
+    },
+    {
+      "srcTextID": "142080",
+      "srcText": "그 뒤 캥거루 팀은 '아빠와 함께 1박 2일 여행권'으로 캠핑장에 왔어요. \"우리 아빠 최고! 아빠랑 놀러 와서 정말 행복해.\"",
+      "srcPage": 18,
+      "srcSentenceEA": 4,
+      "srcWordEA": 22
+    },
+    {
+      "srcTextID": "142081",
+      "srcText": "규리는 아빠와 모닥불 앞에서 오손도손 이야기를 나누었어요. 같은 시간 규리 엄마는 집에서 혼자만의 시간을 즐겼어요. \"아, 여유롭다! 대회가 또 열리면 좋겠어.\"",
+      "srcPage": 19,
+      "srcSentenceEA": 4,
+      "srcWordEA": 23
+    }
+  ]
+}

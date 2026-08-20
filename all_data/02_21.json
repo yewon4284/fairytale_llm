@@ -1,0 +1,139 @@
+{
+  "title": "어디서 나왔니?",
+  "author": "글뿌리",
+  "illustrator": "김홍열",
+  "isbn": "9788929110468",
+  "readAge": "유아",
+  "publishedYear": 2015,
+  "publisher": "글뿌리",
+  "classification": "자연탐구",
+  "paragraphInfoCount": 18,
+  "paragraphInfo": [
+    {
+      "srcTextID": "148325",
+      "srcText": "동글동글 씨앗이랑 길쭉길쭉 씨앗이랑 반질반질 씨앗이랑 울퉁불퉁 씨앗이랑. 모두 모두 모였네. 반질반질 까만 씨앗.",
+      "srcPage": 1,
+      "srcSentenceEA": 3,
+      "srcWordEA": 16
+    },
+    {
+      "srcTextID": "148327",
+      "srcText": "엄마랑 호기심쟁이랑. 씨와 열매는 어떻게 만들어질까요? 식물의 꽃이 씨를 만들어요.",
+      "srcPage": 2,
+      "srcSentenceEA": 3,
+      "srcWordEA": 12
+    },
+    {
+      "srcTextID": "148326",
+      "srcText": "수술의 꽃가루가 암술에 닿으면 씨방의 밑씨가 씨로 자라지요. 그리고 씨방이 자라서 감이나 복숭아 같은 열매가 되어요. 이 열매는 씨를 감싸서 보호하는 역할을 한답니다.",
+      "srcPage": 3,
+      "srcSentenceEA": 3,
+      "srcWordEA": 25
+    },
+    {
+      "srcTextID": "148328",
+      "srcText": "어디서 나왔니? 새빨간 사과 껍질 안에. 달콤한 속살 안에 꼭꼭 숨어 있었지.",
+      "srcPage": 4,
+      "srcSentenceEA": 3,
+      "srcWordEA": 14
+    },
+    {
+      "srcTextID": "148329",
+      "srcText": "반질반질 까만 씨앗, 어디서 나왔니? 새빨간 사과 껍질 안에. 달콤한 속살 안에 꼭꼭 숨어 있었지.",
+      "srcPage": 5,
+      "srcSentenceEA": 3,
+      "srcWordEA": 17
+    },
+    {
+      "srcTextID": "148330",
+      "srcText": "울퉁불퉁 단단한 씨앗, 어디서 나왔니? 까칠까칠 복숭아 껍질 안에. 말랑말랑 속살 안에 꼭꼭 숨어 있었지.",
+      "srcPage": 6,
+      "srcSentenceEA": 3,
+      "srcWordEA": 17
+    },
+    {
+      "srcTextID": "148331",
+      "srcText": "납작납작 노란 씨앗. 어디서 나왔니? 빼죽빼죽 고추 안에 대롱대롱 숨어 있었지.",
+      "srcPage": 7,
+      "srcSentenceEA": 3,
+      "srcWordEA": 13
+    },
+    {
+      "srcTextID": "148332",
+      "srcText": "배꼽 달린 둥근 씨앗. 어디서 나왔니? 길쭉길쭉 강낭콩 꼬투리 안에 동생들과 나란히 숨어 있었지.",
+      "srcPage": 8,
+      "srcSentenceEA": 3,
+      "srcWordEA": 16
+    },
+    {
+      "srcTextID": "148333",
+      "srcText": "오동통 작은 씨앗. 어디서 나왔니? 푸릇푸릇 옥수수 껍질 안에 친구들과 촘촘히 숨어 있었지.",
+      "srcPage": 9,
+      "srcSentenceEA": 3,
+      "srcWordEA": 15
+    },
+    {
+      "srcTextID": "148334",
+      "srcText": "노릇노릇 길쭉한 씨앗. 어디서 나왔니? 주렁주렁 알알이 벼 이삭에 줄줄이 매달려 있었지.",
+      "srcPage": 10,
+      "srcSentenceEA": 3,
+      "srcWordEA": 14
+    },
+    {
+      "srcTextID": "148335",
+      "srcText": "오독오독 맛있는 씨앗. 어디서 나왔니? 뾰족뾰족 밤 가시 안에 꽉꽉 숨어 있었지.",
+      "srcPage": 11,
+      "srcSentenceEA": 3,
+      "srcWordEA": 14
+    },
+    {
+      "srcTextID": "148336",
+      "srcText": "하양 깜장 줄무늬 씨앗. 어디서 나왔니? 해님 닮은 노란 해바라기 안에 촘촘 박혀 있었지.",
+      "srcPage": 12,
+      "srcSentenceEA": 3,
+      "srcWordEA": 16
+    },
+    {
+      "srcTextID": "148337",
+      "srcText": "물렁물렁 작은 씨앗, 어디서 나왔니? 얇은 토마토 껍질 안에. 새빨간 속살 안에 옹기종기 숨어 있었지.",
+      "srcPage": 13,
+      "srcSentenceEA": 3,
+      "srcWordEA": 17
+    },
+    {
+      "srcTextID": "148338",
+      "srcText": "조그맣고 노란 씨앗. 어디서 나왔니? 탱글탱글 딸기 살 속에 콕콕 박혀 있었지.",
+      "srcPage": 14,
+      "srcSentenceEA": 3,
+      "srcWordEA": 14
+    },
+    {
+      "srcTextID": "148339",
+      "srcText": "뽈록뽈록 까만 씨앗. 어디서 나왔니? 바삭바삭 목화 껍질 안에, 보송보송 솜털 안에 살짝 숨어 있었지.",
+      "srcPage": 15,
+      "srcSentenceEA": 3,
+      "srcWordEA": 17
+    },
+    {
+      "srcTextID": "148341",
+      "srcText": "알록달록 열매의 색. 식물의 열매는 크레파스만큼이나 예쁜 색을 가지고 있어요. 그래서 보기만 해도 군침이 꼴깍 넘어가지요. 어떤 색을 입고 있는지 한번 살펴볼까요?",
+      "srcPage": 16,
+      "srcSentenceEA": 4,
+      "srcWordEA": 25
+    },
+    {
+      "srcTextID": "148340",
+      "srcText": "빨간색 열매. 사과, 딸기, 대추는 빨간색이에요. 노란색 열매. 바나나, 늙은 호박, 레몬은 노란색이에요.",
+      "srcPage": 17,
+      "srcSentenceEA": 4,
+      "srcWordEA": 16
+    },
+    {
+      "srcTextID": "148342",
+      "srcText": "초록색 열매. 오이, 애호박은 초록색이에요. 보라색 열매. 가지, 포도는 보라색이에요.",
+      "srcPage": 18,
+      "srcSentenceEA": 4,
+      "srcWordEA": 13
+    }
+  ]
+}
